@@ -1,6 +1,6 @@
 --// SSSHUB STEAL + MAIN
 --// By Rosomax0 • Developer
---// MODIFIED BY ENI FOR R0
+--// MODIFIED BY R0
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -62,7 +62,6 @@ local antiFallEnabled = false
 local petsEspEnabled = false
 local autoSwingEnabled = false
 local autoLockEnabled = false
-local autoEquipEnabled = false
 local antiAfkEnabled = false
 local antiCheatBypassEnabled = false
 
@@ -75,14 +74,10 @@ local PetESPs = {}
 local AntiFall
 local autoSwingConnection
 local autoLockConnection
-local autoEquipConnection
 local antiAfkConnection
 local antiCheatConnection
 
 local LOCK_STATE_ATTR = "LockState"
-local LOCK_ENDS_ATTR = "LockEndsAt"
-local STATE_LOCKED = "Locked"
-local STATE_COOLDOWN = "Cooldown"
 local STATE_IDLE = "Idle"
 
 --------------------------------------------------
@@ -225,9 +220,8 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (BROAD SCAN)
+-- PETS ESP
 --------------------------------------------------
-
 local function removePetESP(pet)
     if PetESPs[pet] then
         PetESPs[pet]:Destroy()
@@ -274,52 +268,13 @@ local function createPetESP(pet)
     PetESPs[pet] = folder
 end
 
--- Проверка: похож ли объект на питомца
-local function isPetModel(obj)
-    if not obj:IsA("Model") then return false end
-    if obj == LocalPlayer.Character then return false end
-    
-    -- Не игрок
-    for _, player in ipairs(Players:GetPlayers()) do
-        if obj == player.Character then return false end
-    end
-    
-    -- Имеет Humanoid (питомцы обычно имеют)
-    if obj:FindFirstChildOfClass("Humanoid") then
-        -- Но не игрок
-        if not Players:GetPlayerFromCharacter(obj) then
-            return true
-        end
-    end
-    
-    -- Имеет PrimaryPart и маленький размер (питомцы маленькие)
-    local primaryPart = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-    if primaryPart then
-        -- Проверяем имя против шаблонов
-        if petTemplateNames[obj.Name] then
-            return true
-        end
-    end
-    
-    return false
-end
-
 local function scanPetsInWorkspace()
-    -- Сканируем всё в workspace
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if isPetModel(obj) and not PetESPs[obj] then
-            createPetESP(obj)
-        end
-    end
-    
-    -- Также сканируем внутри персонажей игроков (питомцы следуют за игроком)
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Character then
-            for _, obj in ipairs(player.Character:GetDescendants()) do
-                if isPetModel(obj) and not PetESPs[obj] then
-                    createPetESP(obj)
-                end
-            end
+    local runtimePets = Workspace:FindFirstChild("RuntimePets")
+    if not runtimePets then return end
+
+    for _, pet in ipairs(runtimePets:GetChildren()) do
+        if pet:IsA("Model") and not PetESPs[pet] then
+            createPetESP(pet)
         end
     end
 end
@@ -348,7 +303,7 @@ task.spawn(function()
 end)
 
 --------------------------------------------------
--- AUTO SWING (COMBAT)
+-- AUTO SWING
 --------------------------------------------------
 local function startAutoSwing()
     if autoSwingConnection then return end
@@ -374,46 +329,8 @@ local function stopAutoSwing()
 end
 
 --------------------------------------------------
--- AUTO EQUIP BAT
---------------------------------------------------
-local function startAutoEquip()
-    if autoEquipConnection then return end
-
-    autoEquipConnection = task.spawn(function()
-        while autoEquipEnabled do
-            if humanoid and humanoid.Health > 0 then
-                local currentTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-
-                if not currentTool then
-                    local backpack = LocalPlayer:FindFirstChild("Backpack")
-                    if backpack then
-                        for _, item in ipairs(backpack:GetChildren()) do
-                            if item:IsA("Tool") and item.Name:match("Bat") then
-                                pcall(function()
-                                    humanoid:EquipTool(item)
-                                end)
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-            task.wait(0.5)
-        end
-    end)
-end
-
-local function stopAutoEquip()
-    if autoEquipConnection then
-        task.cancel(autoEquipConnection)
-        autoEquipConnection = nil
-    end
-end
-
---------------------------------------------------
 -- AUTO LOCK BASE
 --------------------------------------------------
-
 local function findMyPlot()
     local plotsFolder = Workspace:FindFirstChild("Plots")
     if not plotsFolder then return nil end
@@ -429,121 +346,6 @@ local function findMyPlot()
     return nil
 end
 
-local function tryLockViaNetwork(plotName)
-    -- Пробуем все возможные пути к Network модулю
-    local possiblePaths = {
-        ReplicatedStorage:FindFirstChild("Modules"),
-        ReplicatedStorage:FindFirstChild("Shared"),
-        ReplicatedStorage:FindFirstChild("Shared") and ReplicatedStorage.Shared:FindFirstChild("Services"),
-        ReplicatedStorage:FindFirstChild("Shared") and ReplicatedStorage.Shared:FindFirstChild("Modules"),
-    }
-    
-    for _, path in ipairs(possiblePaths) do
-        if path then
-            local networkModule = path:FindFirstChild("Network")
-            if networkModule then
-                local success, network = pcall(function()
-                    return require(networkModule)
-                end)
-                if success and network then
-                    -- Пробуем send
-                    if network.send then
-                        pcall(function()
-                            network.send("request_lock_base", plotName)
-                        end)
-                        pcall(function()
-                            network.send("lock_base", plotName)
-                        end)
-                        pcall(function()
-                            network:send("request_lock_base", plotName)
-                        end)
-                        return true
-                    end
-                    -- Пробуем FireServer
-                    if network.FireServer then
-                        pcall(function()
-                            network:FireServer("request_lock_base", plotName)
-                        end)
-                        return true
-                    end
-                end
-            end
-        end
-    end
-    return false
-end
-
-local function tryLockViaProximityPrompt(plot)
-    -- Ищем ProximityPrompt на Lock > Pad
-    local lockObj = plot:FindFirstChild("Lock")
-    if not lockObj then return false end
-    
-    local pad = lockObj:FindFirstChild("Pad")
-    if not pad then 
-        -- Может Pad это сам lockObj
-        pad = lockObj 
-    end
-    
-    -- Ищем все ProximityPrompt
-    for _, descendant in ipairs(pad:GetDescendants()) do
-        if descendant:IsA("ProximityPrompt") then
-            pcall(function()
-                fireproximityprompt(descendant)
-            end)
-            return true
-        end
-    end
-    
-    -- Также на самом Lock
-    for _, descendant in ipairs(lockObj:GetDescendants()) do
-        if descendant:IsA("ProximityPrompt") then
-            pcall(function()
-                fireproximityprompt(descendant)
-            end)
-            return true
-        end
-    end
-    
-    return false
-end
-
-local function tryLockViaRemote(plotName)
-    -- Пробуем найти RemoteEvent в разных местах
-    local searchFolders = {
-        ReplicatedStorage,
-        ReplicatedStorage:FindFirstChild("Remotes"),
-        ReplicatedStorage:FindFirstChild("Events"),
-        ReplicatedStorage:FindFirstChild("Network"),
-        ReplicatedStorage:FindFirstChild("Shared"),
-    }
-    
-    local remoteNames = {
-        "request_lock_base", "LockBase", "RequestLock", "LockPlot",
-        "lockBase", "lock_base", "BaseLock", "Lock"
-    }
-    
-    for _, folder in ipairs(searchFolders) do
-        if folder then
-            for _, remoteName in ipairs(remoteNames) do
-                local remote = folder:FindFirstChild(remoteName)
-                if remote and remote:IsA("RemoteEvent") then
-                    pcall(function()
-                        remote:FireServer(plotName)
-                    end)
-                    return true
-                end
-                if remote and remote:IsA("RemoteFunction") then
-                    pcall(function()
-                        remote:InvokeServer(plotName)
-                    end)
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
 local function startAutoLock()
     if autoLockConnection then return end
 
@@ -556,14 +358,21 @@ local function startAutoLock()
                 local currentState = lockObj and lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
 
                 if currentState == STATE_IDLE then
-                    -- Способ 1: Network модуль
-                    tryLockViaNetwork(myPlot.Name)
+                    local networkModule = ReplicatedStorage:FindFirstChild("Modules")
+                    if networkModule then
+                        networkModule = networkModule:FindFirstChild("Network")
+                    end
                     
-                    -- Способ 2: ProximityPrompt
-                    tryLockViaProximityPrompt(myPlot)
-                    
-                    -- Способ 3: RemoteEvent
-                    tryLockViaRemote(myPlot.Name)
+                    if networkModule then
+                        local success, network = pcall(function()
+                            return require(networkModule)
+                        end)
+                        if success and network and network.send then
+                            pcall(function()
+                                network.send("request_lock_base", myPlot.Name)
+                            end)
+                        end
+                    end
                 end
             end
             task.wait(math.random(3, 5))
@@ -581,35 +390,50 @@ end
 --------------------------------------------------
 -- ANTI ANTI-CHEAT
 --------------------------------------------------
+local kickHooked = false
+
+local function hookKick()
+    if kickHooked then return end
+    kickHooked = true
+
+    pcall(function()
+        local mt = getrawmetatable(game)
+        local oldNamecall = mt.__namecall
+        
+        if setreadonly then
+            setreadonly(mt, false)
+        end
+        
+        if hookmetamethod then
+            local oldNc = hookmetamethod(game, "__namecall", function(self, ...)
+                local method = getnamecallmethod()
+                if method == "Kick" and self == LocalPlayer then
+                    return
+                end
+                return oldNc(self, ...)
+            end)
+        end
+        
+        if setreadonly then
+            setreadonly(mt, true)
+        end
+    end)
+end
+
 local function disableWorkspaceProbe()
     local probe = Workspace:FindFirstChild("AntiCheatProbe")
-    if probe then
-        if probe:IsA("Script") or probe:IsA("LocalScript") then
-            pcall(function()
-                probe.Disabled = true
-            end)
-            pcall(function()
-                probe:Destroy()
-            end)
-        elseif probe:IsA("BasePart") then
-            pcall(function()
-                probe.CanTouch = false
-                probe.CanCollide = false
-                probe.CanQuery = false
-                probe.Transparency = 1
-            end)
-        end
-    end
+    if not probe then return end
 
-    if probe then
-        for _, child in ipairs(probe:GetDescendants()) do
-            if child:IsA("Script") or child:IsA("LocalScript") then
-                pcall(function()
-                    child.Disabled = true
-                end)
-            end
+    for _, descendant in ipairs(probe:GetDescendants()) do
+        if descendant:IsA("Script") or descendant:IsA("LocalScript") then
+            pcall(function()
+                descendant.Disabled = true
+            end)
         end
     end
+    pcall(function()
+        probe:Destroy()
+    end)
 end
 
 local function disableNilAntiCheat()
@@ -618,203 +442,12 @@ local function disableNilAntiCheat()
     local nilInstances = getnilinstances()
 
     for _, instance in ipairs(nilInstances) do
-        local name = instance.Name and instance.Name:lower() or ""
-
-        if name:find("anticheat")
-        or name:find("anti_cheat")
-        or name:find("antichet")
-        or name:find("detection")
-        or name:find("flag") then
-
-            if instance:IsA("Script") or instance:IsA("LocalScript") then
-                pcall(function()
-                    instance.Disabled = true
-                end)
-            end
-
-            if instance:IsA("BasePart") then
-                pcall(function()
-                    instance.CanTouch = false
-                    instance.CanCollide = false
-                    instance.CanQuery = false
-                end)
-            end
-        end
-    end
-end
-
-local function resetBanCounters()
-    local playerData = LocalPlayer:FindFirstChild("Player Data")
-    if not playerData then return end
-
-    local stats = playerData:FindFirstChild("stats")
-    if not stats then return end
-
-    local bans = stats:FindFirstChild("#Anti Cheat Bans")
-    local kicks = stats:FindFirstChild("#Anti Cheat Kicks")
-
-    if bans then
-        pcall(function()
-            bans.Value = 0
-        end)
-    end
-
-    if kicks then
-        pcall(function()
-            kicks.Value = 0
-        end)
-    end
-end
-
-local function startAntiCheatBypass()
-    if antiCheatConnection then return end
-
-    disableWorkspaceProbe()
---------------------------------------------------
--- ANTI ANTI-CHEAT (KICK HOOK + DISABLE)
---------------------------------------------------
-
-local kickHooked = false
-
--- Перехват LocalPlayer:Kick()
-local function hookKick()
-    if kickHooked then return end
-    kickHooked = true
-    
-    local mt = getrawmetatable(game)
-    local oldNamecall = mt.__namecall
-    local oldIndex = mt.__index
-    
-    if setreadonly then
-        setreadonly(mt, false)
-    end
-    
-    -- Перехват namecall (когда вызывается :Kick())
-    mt.__namecall = newcclosure and newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        
-        if method == "Kick" and self == LocalPlayer then
-            return -- Блокируем кик
-        end
-        
-        return oldNamecall(self, ...)
-    end) or function(self, ...)
-        local method = getnamecallmethod()
-        if method == "Kick" and self == LocalPlayer then
-            return
-        end
-        return oldNamecall(self, ...)
-    end
-    
-    -- Также перехват index (на случай если античит вызывает .Kick как свойство)
-    mt.__index = newcclosure and newcclosure(function(self, key)
-        if key == "Kick" and self == LocalPlayer then
-            return function() end -- Возвращаем пустую функцию
-        end
-        return oldIndex(self, key)
-    end) or function(self, key)
-        if key == "Kick" and self == LocalPlayer then
-            return function() end
-        end
-        return oldIndex(self, key)
-    end
-    
-    if setreadonly then
-        setreadonly(mt, true)
-    end
-end
-
--- Альтернативный хук кика (проще)
-local function hookKickSimple()
-    local oldKick
-    oldKick = hookfunc(LocalPlayer.Kick, function(self, ...)
-        if self == LocalPlayer then
-            return -- Блокируем
-        end
-        return oldKick(self, ...)
-    end)
-end
-
-local function disableWorkspaceProbe()
-    local probe = Workspace:FindFirstChild("AntiCheatProbe")
-    if probe then
-        -- Отключаем скрипты внутри
-        for _, descendant in ipairs(probe:GetDescendants()) do
-            if descendant:IsA("Script") or descendant:IsA("LocalScript") then
-                pcall(function()
-                    descendant.Disabled = true
-                    descendant:Destroy()
-                end)
-            end
-            if descendant:IsA("BasePart") then
-                pcall(function()
-                    descendant.CanTouch = false
-                    descendant.CanCollide = false
-                    descendant.CanQuery = false
-                end)
-            end
-        end
-        -- Сам probe
-        if probe:IsA("Script") or probe:IsA("LocalScript") then
-            pcall(function()
-                probe.Disabled = true
-                probe:Destroy()
-            end)
-        elseif probe:IsA("BasePart") then
-            pcall(function()
-                probe.CanTouch = false
-                probe.CanCollide = false
-                probe.CanQuery = false
-                probe.Transparency = 1
-            end)
-        end
-        -- Удаляем целиком
-        pcall(function()
-            probe:Destroy()
-        end)
-    end
-end
-
-local function disableNilAntiCheat()
-    -- Пробуем getnilinstances
-    local nilInstances = nil
-    
-    if getnilinstances then
-        nilInstances = getnilinstances()
-    elseif getinstances then
-        -- Фильтруем только nil
-        nilInstances = {}
-        for _, inst in ipairs(getinstances()) do
-            if inst.Parent == nil then
-                table.insert(nilInstances, inst)
-            end
-        end
-    end
-    
-    if not nilInstances then return end
-
-    for _, instance in ipairs(nilInstances) do
         local name = (instance.Name or ""):lower()
-        
-        if name:find("anti") or name:find("cheat") or name:find("detect")
-        or name:find("flag") or name:find("kick") or name:find("ban")
-        or name:find("speed") or name:find("teleport") or name:find("movement") then
-            
+
+        if name:find("anti") or name:find("cheat") or name:find("detect") then
             if instance:IsA("Script") or instance:IsA("LocalScript") then
                 pcall(function()
                     instance.Disabled = true
-                end)
-                pcall(function()
-                    instance:Destroy()
-                end)
-            end
-            
-            if instance:IsA("BasePart") then
-                pcall(function()
-                    instance.CanTouch = false
-                    instance.CanCollide = false
-                    instance.CanQuery = false
                 end)
             end
         end
@@ -836,7 +469,6 @@ local function resetBanCounters()
             bans.Value = 0
         end)
     end
-
     if kicks then
         pcall(function()
             kicks.Value = 0
@@ -847,22 +479,14 @@ end
 local function startAntiCheatBypass()
     if antiCheatConnection then return end
 
-    -- Хукаем кик ПЕРВЫМ делом
     pcall(hookKick)
-    pcall(hookKickSimple)
-    
-    -- Потом отключаем античит
     disableWorkspaceProbe()
     disableNilAntiCheat()
-    resetBanCounters()
 
-    -- Постоянный мониторинг
     antiCheatConnection = task.spawn(function()
         while antiCheatBypassEnabled do
-            disableWorkspaceProbe()
-            disableNilAntiCheat()
             resetBanCounters()
-            task.wait(1)
+            task.wait(2)
         end
     end)
 end
@@ -875,7 +499,7 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (STEALTH)
+-- WALL HOP
 --------------------------------------------------
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
@@ -885,14 +509,14 @@ RunService.Heartbeat:Connect(function()
     if wallHopDebounce then return end
 
     local currentTime = tick()
-    if currentTime - wallHopLastTrigger < 0.4 then return end
+    if currentTime - wallHopLastTrigger < 0.5 then return end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
     local forwardDirection = rootPart.CFrame.LookVector
-    local result = workspace:Raycast(rootPart.Position, forwardDirection * 2.5, rayParams)
+    local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
 
     if result then
         wallHopDebounce = true
@@ -901,14 +525,14 @@ RunService.Heartbeat:Connect(function()
         humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 
         task.spawn(function()
-            local hopHeight = math.random(8, 12) / 10
-            for i = 1, 3 do
-                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, hopHeight, 0)
-                task.wait(0.02)
-            end
-            local forwardNudge = forwardDirection * 2
+            task.wait(0.05)
+            local vel = rootPart.AssemblyLinearVelocity
+            rootPart.AssemblyLinearVelocity = Vector3.new(vel.X, 35, vel.Z)
+            
+            local forwardNudge = forwardDirection * 1.5
             rootPart.CFrame = rootPart.CFrame + forwardNudge
-            task.wait(0.15)
+            
+            task.wait(0.3)
             wallHopDebounce = false
         end)
     end
@@ -989,12 +613,9 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = game:GetService("CoreGui")
 
---------------------------------------------------
--- MAIN FRAME
---------------------------------------------------
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 270, 0, 370)
-Main.Position = UDim2.new(0.5, -135, 0.5, -185)
+Main.Size = UDim2.new(0, 270, 0, 340)
+Main.Position = UDim2.new(0.5, -135, 0.5, -170)
 Main.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -1006,9 +627,6 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 9)
 MainCorner.Parent = Main
 
---------------------------------------------------
--- TOP BAR
---------------------------------------------------
 local TopBar = Instance.new("Frame")
 TopBar.Size = UDim2.new(1, 0, 0, 32)
 TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
@@ -1036,9 +654,7 @@ HideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 HideButton.TextSize = 11
 HideButton.Font = Enum.Font.GothamBold
 HideButton.Parent = TopBar
---------------------------------------------------
--- BUTTON CREATOR
---------------------------------------------------
+
 local function CreateButton(parent, text, position, size)
     local button = Instance.new("TextButton")
     button.Size = size
@@ -1058,16 +674,10 @@ local function CreateButton(parent, text, position, size)
     return button
 end
 
---------------------------------------------------
--- TABS
---------------------------------------------------
 local MainTab = CreateButton(Main, "MAIN", UDim2.new(0, 3, 0, 38), UDim2.new(0.33, -4, 0, 25))
 local CombatTab = CreateButton(Main, "COMBAT", UDim2.new(0.33, 1, 0, 38), UDim2.new(0.33, -4, 0, 25))
 local ServerTab = CreateButton(Main, "SERVER", UDim2.new(0.66, -1, 0, 38), UDim2.new(0.34, -4, 0, 25))
 
---------------------------------------------------
--- PAGES
---------------------------------------------------
 local MainPage = Instance.new("Frame")
 MainPage.Size = UDim2.new(1, -10, 1, -70)
 MainPage.Position = UDim2.new(0, 5, 0, 68)
@@ -1087,6 +697,7 @@ ServerPage.Position = UDim2.new(0, 5, 0, 68)
 ServerPage.BackgroundTransparency = 1
 ServerPage.Visible = false
 ServerPage.Parent = Main
+
 --------------------------------------------------
 -- MAIN PAGE BUTTONS
 --------------------------------------------------
@@ -1145,8 +756,7 @@ end)
 -- COMBAT PAGE BUTTONS
 --------------------------------------------------
 local AutoSwingButton = CreateButton(CombatPage, "AUTO SWING     OFF", UDim2.new(0, 5, 0, 5), UDim2.new(1, -10, 0, 26))
-local AutoEquipButton = CreateButton(CombatPage, "AUTO EQUIP BAT     OFF", UDim2.new(0, 5, 0, 40), UDim2.new(1, -10, 0, 26))
-local AutoLockButton = CreateButton(CombatPage, "AUTO LOCK     OFF", UDim2.new(0, 5, 0, 75), UDim2.new(1, -10, 0, 26))
+local AutoLockButton = CreateButton(CombatPage, "AUTO LOCK     OFF", UDim2.new(0, 5, 0, 40), UDim2.new(1, -10, 0, 26))
 
 AutoSwingButton.MouseButton1Click:Connect(function()
     autoSwingEnabled = not autoSwingEnabled
@@ -1154,17 +764,12 @@ AutoSwingButton.MouseButton1Click:Connect(function()
     if autoSwingEnabled then startAutoSwing() else stopAutoSwing() end
 end)
 
-AutoEquipButton.MouseButton1Click:Connect(function()
-    autoEquipEnabled = not autoEquipEnabled
-    AutoEquipButton.Text = "AUTO EQUIP BAT     " .. (autoEquipEnabled and "ON" or "OFF")
-    if autoEquipEnabled then startAutoEquip() else stopAutoEquip() end
-end)
-
 AutoLockButton.MouseButton1Click:Connect(function()
     autoLockEnabled = not autoLockEnabled
     AutoLockButton.Text = "AUTO LOCK     " .. (autoLockEnabled and "ON" or "OFF")
     if autoLockEnabled then startAutoLock() else stopAutoLock() end
 end)
+
 --------------------------------------------------
 -- BYPASS MENU
 --------------------------------------------------
@@ -1213,8 +818,9 @@ WallHopButton.MouseButton1Click:Connect(function()
     wallHopEnabled = not wallHopEnabled
     WallHopButton.Text = "WALL HOP     " .. (wallHopEnabled and "ON" or "OFF")
 end)
+
 --------------------------------------------------
--- ENTER / EXIT BASE (STEALTH TWEEN)
+-- ENTER / EXIT BASE
 --------------------------------------------------
 local baseDebounce = false
 
@@ -1261,6 +867,7 @@ end)
 ExitBase.MouseButton1Click:Connect(function()
     smoothVerticalMove(UP_DISTANCE, 1)
 end)
+
 --------------------------------------------------
 -- SERVER PAGE
 --------------------------------------------------
@@ -1350,7 +957,7 @@ local function UpdateList()
         end)
     end
 
-Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 6)
+    Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 6)
     Status.Text = "Saved Job ID: " .. #SavedJobs
 end
 
@@ -1387,6 +994,7 @@ end)
 ReconnectButton.MouseButton1Click:Connect(function()
     TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId, LocalPlayer)
 end)
+
 --------------------------------------------------
 -- SERVER HOP
 --------------------------------------------------
@@ -1454,6 +1062,7 @@ local function FindServer(Mode)
     end
     return nil
 end
+
 BusyButton.MouseButton1Click:Connect(function()
     if ServerSearching then return end
     ServerSearching = true
@@ -1485,6 +1094,7 @@ EmptyButton.MouseButton1Click:Connect(function()
     end
     ServerSearching = false
 end)
+
 --------------------------------------------------
 -- TAB SWITCHING
 --------------------------------------------------
@@ -1551,4 +1161,4 @@ end)
 -- START
 --------------------------------------------------
 MainTab.BackgroundColor3 = Color3.fromRGB(65, 95, 145)
-UpdateList()"
+UpdateList()
