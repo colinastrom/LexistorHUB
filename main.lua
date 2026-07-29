@@ -1,6 +1,6 @@
 --// SSSHUB STEAL + MAIN
 --// By Rosomax0 • Developer
---// MODIFIED BY ENI FOR LO
+--// MODIFIED BY ENI FOR R0
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
