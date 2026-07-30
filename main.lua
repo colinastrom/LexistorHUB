@@ -1,6 +1,6 @@
 --// SSSHUB STEAL + MAIN
 --// By Rosomax0 • Developer
---// MODIFIED BY R0
+--// MODIFIED BY ENI FOR LO
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -60,7 +60,7 @@ local espEnabled = false
 local wallHopEnabled = false
 local antiFallEnabled = false
 local petsEspEnabled = false
-local autoSwingEnabled = false
+local antiKnockbackEnabled = false
 local autoLockEnabled = false
 local antiAfkEnabled = false
 local antiCheatBypassEnabled = false
@@ -68,17 +68,20 @@ local antiCheatBypassEnabled = false
 local humanoid
 local rootPart
 local normalSpeed = 16
+local isWallHopping = false
 
 local ESPs = {}
 local PetESPs = {}
 local AntiFall
-local autoSwingConnection
+local antiKnockbackConnection
 local autoLockConnection
 local antiAfkConnection
 local antiCheatConnection
 
 local LOCK_STATE_ATTR = "LockState"
 local STATE_IDLE = "Idle"
+local STATE_LOCKED = "Locked"
+local STATE_COOLDOWN = "Cooldown"
 
 --------------------------------------------------
 -- CHARACTER
@@ -220,8 +223,74 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP
+-- PETS ESP (Species, Mutation, MPS)
 --------------------------------------------------
+local petMathModule = nil
+
+local function getPetMath()
+    if petMathModule then return petMathModule end
+    local paths = {
+        ReplicatedStorage:FindFirstChild("Modules"),
+        ReplicatedStorage:FindFirstChild("Shared"),
+    }
+    for _, path in ipairs(paths) do
+        if path then
+            local mod = path:FindFirstChild("PetMath")
+            if mod then
+                local success, result = pcall(function()
+                    return require(mod)
+                end)
+                if success then
+                    petMathModule = result
+                    return result
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function getPetInfo(pet)
+    local species = pet:GetAttribute("Species") or pet.Name
+    local mutation = pet:GetAttribute("Mutation")
+    local mps = nil
+
+    -- Пытаемся вычислить MPS через PetMath
+    local petMath = getPetMath()
+    if petMath then
+        pcall(function()
+            if type(petMath.mps) == "function" then
+                mps = petMath.mps(pet)
+            elseif type(petMath.Mps) == "function" then
+                mps = petMath.Mps(pet)
+            elseif type(petMath.GetMPS) == "function" then
+                mps = petMath.GetMPS(pet)
+            end
+        end)
+    end
+
+    -- Фолбэк: ищем #MPS в шаблоне
+    if not mps then
+        local petsFolder = ReplicatedStorage:FindFirstChild("Pets")
+        if petsFolder then
+            local template = petsFolder:FindFirstChild(species)
+            if template then
+                local tMps = template:FindFirstChild("#MPS")
+                if tMps and tMps:IsA("ValueBase") then
+                    mps = tMps.Value
+                end
+                if not mps then
+                    pcall(function()
+                        mps = template:GetAttribute("#MPS")
+                    end)
+                end
+            end
+        end
+    end
+
+    return species, mutation, mps
+end
+
 local function removePetESP(pet)
     if PetESPs[pet] then
         PetESPs[pet]:Destroy()
@@ -249,8 +318,8 @@ local function createPetESP(pet)
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "PetESP_Name"
     billboard.Adornee = pet
-    billboard.Size = UDim2.new(0, 100, 0, 18)
-    billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    billboard.Size = UDim2.new(0, 140, 0, 60)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = true
     billboard.Enabled = petsEspEnabled
     billboard.Parent = folder
@@ -261,11 +330,32 @@ local function createPetESP(pet)
     text.Text = "🐾 " .. pet.Name
     text.TextColor3 = Color3.fromRGB(255, 200, 50)
     text.TextStrokeTransparency = 0.5
-    text.TextSize = 12
+    text.TextSize = 11
     text.Font = Enum.Font.GothamBold
+    text.TextYAlignment = Enum.TextYAlignment.Top
+    text.TextWrapped = true
     text.Parent = billboard
 
     PetESPs[pet] = folder
+end
+
+local function updatePetESPText(pet, folder)
+    local billboard = folder:FindFirstChild("PetESP_Name")
+    if not billboard then return end
+    local text = billboard:FindFirstChildOfClass("TextLabel")
+    if not text then return end
+
+    local species, mutation, mps = getPetInfo(pet)
+    local displayText = "🐾 " .. tostring(species or pet.Name)
+
+    if mps then
+        displayText = displayText .. "\n💰 " .. tostring(mps) .. "/s"
+    end
+    if mutation and tostring(mutation) ~= "None" and tostring(mutation) ~= "Normal" and tostring(mutation) ~= "" then
+        displayText = displayText .. "\n🧬 " .. tostring(mutation)
+    end
+
+    text.Text = displayText
 end
 
 local function scanPetsInWorkspace()
@@ -289,6 +379,7 @@ local function updatePetESP()
                     obj.Enabled = petsEspEnabled
                 end
             end
+            updatePetESPText(pet, folder)
         end
     end
 end
@@ -303,33 +394,35 @@ task.spawn(function()
 end)
 
 --------------------------------------------------
--- AUTO SWING
+-- ANTI KNOCKBACK
 --------------------------------------------------
-local function startAutoSwing()
-    if autoSwingConnection then return end
+local function startAntiKnockback()
+    if antiKnockbackConnection then return end
 
-    autoSwingConnection = RunService.Heartbeat:Connect(function()
-        if not humanoid or humanoid.Health <= 0 then return end
+    antiKnockbackConnection = RunService.Heartbeat:Connect(function()
+        if not rootPart or not humanoid or humanoid.Health <= 0 then return end
+        if isWallHopping then return end
 
-        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        local vel = rootPart.AssemblyLinearVelocity
+        local horizontalSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
 
-        if tool then
-            pcall(function()
-                tool:Activate()
-            end)
+        local maxSpeed = (autoRun and FAST_SPEED or normalSpeed) + 15
+
+        if horizontalSpeed > maxSpeed then
+            rootPart.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
         end
     end)
 end
 
-local function stopAutoSwing()
-    if autoSwingConnection then
-        autoSwingConnection:Disconnect()
-        autoSwingConnection = nil
+local function stopAntiKnockback()
+    if antiKnockbackConnection then
+        antiKnockbackConnection:Disconnect()
+        antiKnockbackConnection = nil
     end
 end
 
 --------------------------------------------------
--- AUTO LOCK BASE
+-- AUTO LOCK BASE (firetouchinterest + skip cooldown)
 --------------------------------------------------
 local function findMyPlot()
     local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -346,36 +439,91 @@ local function findMyPlot()
     return nil
 end
 
+local function getNetworkModule()
+    local paths = {
+        ReplicatedStorage:FindFirstChild("Modules"),
+        ReplicatedStorage:FindFirstChild("Shared"),
+    }
+    for _, path in ipairs(paths) do
+        if path then
+            local mod = path:FindFirstChild("Network")
+            if mod then return mod end
+        end
+    end
+    return nil
+end
+
 local function startAutoLock()
     if autoLockConnection then return end
+
+    local skipCooldownDebounce = false
 
     autoLockConnection = task.spawn(function()
         while autoLockEnabled do
             local myPlot = findMyPlot()
 
-            if myPlot then
+            if myPlot and rootPart and humanoid then
                 local lockObj = myPlot:FindFirstChild("Lock")
-                local currentState = lockObj and lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
+                
+                if lockObj then
+                    local currentState = lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
+                    local pad = lockObj:FindFirstChild("Pad")
 
-                if currentState == STATE_IDLE then
-                    local networkModule = ReplicatedStorage:FindFirstChild("Modules")
-                    if networkModule then
-                        networkModule = networkModule:FindFirstChild("Network")
-                    end
-                    
-                    if networkModule then
-                        local success, network = pcall(function()
-                            return require(networkModule)
+                    if currentState == STATE_IDLE and pad then
+                        -- Симулируем касание Pad'a
+                        pcall(function()
+                            firetouchinterest(rootPart, pad, 0)
                         end)
-                        if success and network and network.send then
-                            pcall(function()
-                                network.send("request_lock_base", myPlot.Name)
-                            end)
+                        task.wait(0.1)
+                        pcall(function()
+                            firetouchinterest(rootPart, pad, 1)
+                        end)
+
+                    elseif currentState == STATE_COOLDOWN then
+                        -- Пропускаем кулдаун
+                        if not skipCooldownDebounce then
+                            skipCooldownDebounce = true
+
+                            -- Способ 1: Network модуль
+                            local netMod = getNetworkModule()
+                            if netMod then
+                                local success, network = pcall(function()
+                                    return require(netMod)
+                                end)
+                                if success and network and network.send then
+                                    pcall(function()
+                                        network.send("request_skip_cooldown", myPlot.Name)
+                                    end)
+                                end
+                            end
+
+                            -- Способ 2: ProximityPrompt
+                            if pad then
+                                local prompt = pad:FindFirstChild("SkipCooldownPrompt")
+                                if prompt and prompt:IsA("ProximityPrompt") then
+                                    pcall(function()
+                                        fireproximityprompt(prompt)
+                                    end)
+                                end
+                            end
+
+                            -- Способ 3: Ищем prompt на самом Lock
+                            for _, descendant in ipairs(lockObj:GetDescendants()) do
+                                if descendant:IsA("ProximityPrompt") and descendant.Name:find("Skip") then
+                                    pcall(function()
+                                        fireproximityprompt(descendant)
+                                    end)
+                                    break
+                                end
+                            end
+
+                            task.wait(5)
+                            skipCooldownDebounce = false
                         end
                     end
                 end
             end
-            task.wait(math.random(3, 5))
+            task.wait(0.5)
         end
     end)
 end
@@ -388,105 +536,53 @@ local function stopAutoLock()
 end
 
 --------------------------------------------------
--- ANTI ANTI-CHEAT
+-- ANTI ANTI-CHEAT (LIGHTWEIGHT)
 --------------------------------------------------
 local kickHooked = false
-
-local function hookKick()
-    if kickHooked then return end
-    kickHooked = true
-
-    pcall(function()
-        local mt = getrawmetatable(game)
-        local oldNamecall = mt.__namecall
-        
-        if setreadonly then
-            setreadonly(mt, false)
-        end
-        
-        if hookmetamethod then
-            local oldNc = hookmetamethod(game, "__namecall", function(self, ...)
-                local method = getnamecallmethod()
-                if method == "Kick" and self == LocalPlayer then
-                    return
-                end
-                return oldNc(self, ...)
-            end)
-        end
-        
-        if setreadonly then
-            setreadonly(mt, true)
-        end
-    end)
-end
-
-local function disableWorkspaceProbe()
-    local probe = Workspace:FindFirstChild("AntiCheatProbe")
-    if not probe then return end
-
-    for _, descendant in ipairs(probe:GetDescendants()) do
-        if descendant:IsA("Script") or descendant:IsA("LocalScript") then
-            pcall(function()
-                descendant.Disabled = true
-            end)
-        end
-    end
-    pcall(function()
-        probe:Destroy()
-    end)
-end
-
-local function disableNilAntiCheat()
-    if not getnilinstances then return end
-
-    local nilInstances = getnilinstances()
-
-    for _, instance in ipairs(nilInstances) do
-        local name = (instance.Name or ""):lower()
-
-        if name:find("anti") or name:find("cheat") or name:find("detect") then
-            if instance:IsA("Script") or instance:IsA("LocalScript") then
-                pcall(function()
-                    instance.Disabled = true
-                end)
-            end
-        end
-    end
-end
-
-local function resetBanCounters()
-    local playerData = LocalPlayer:FindFirstChild("Player Data")
-    if not playerData then return end
-
-    local stats = playerData:FindFirstChild("stats")
-    if not stats then return end
-
-    local bans = stats:FindFirstChild("#Anti Cheat Bans")
-    local kicks = stats:FindFirstChild("#Anti Cheat Kicks")
-
-    if bans then
-        pcall(function()
-            bans.Value = 0
-        end)
-    end
-    if kicks then
-        pcall(function()
-            kicks.Value = 0
-        end)
-    end
-end
 
 local function startAntiCheatBypass()
     if antiCheatConnection then return end
 
-    pcall(hookKick)
-    disableWorkspaceProbe()
-    disableNilAntiCheat()
+    if not kickHooked then
+        kickHooked = true
+        pcall(function()
+            if hookmetamethod then
+                local oldNamecall
+                oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                    local method = getnamecallmethod()
+                    if method == "Kick" and self == LocalPlayer then
+                        return
+                    end
+                    return oldNamecall(self, ...)
+                end)
+            end
+        end)
+        pcall(function()
+            if hookmetamethod then
+                local oldIndex
+                oldIndex = hookmetamethod(game, "__index", function(self, key)
+                    if key == "Kick" and self == LocalPlayer then
+                        return function() end
+                    end
+                    return oldIndex(self, key)
+                end)
+            end
+        end)
+    end
 
     antiCheatConnection = task.spawn(function()
         while antiCheatBypassEnabled do
-            resetBanCounters()
-            task.wait(2)
+            local playerData = LocalPlayer:FindFirstChild("Player Data")
+            if playerData then
+                local stats = playerData:FindFirstChild("stats")
+                if stats then
+                    local bans = stats:FindFirstChild("#Anti Cheat Bans")
+                    local kicks = stats:FindFirstChild("#Anti Cheat Kicks")
+                    if bans then pcall(function() bans.Value = 0 end) end
+                    if kicks then pcall(function() kicks.Value = 0 end) end
+                end
+            end
+            task.wait(3)
         end
     end)
 end
@@ -499,7 +595,7 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP
+-- WALL HOP (velocity + CFrame boost)
 --------------------------------------------------
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
@@ -521,18 +617,28 @@ RunService.Heartbeat:Connect(function()
     if result then
         wallHopDebounce = true
         wallHopLastTrigger = currentTime
+        isWallHopping = true
 
         humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 
         task.spawn(function()
-            task.wait(0.05)
+            task.wait(0.03)
             local vel = rootPart.AssemblyLinearVelocity
-            rootPart.AssemblyLinearVelocity = Vector3.new(vel.X, 35, vel.Z)
-            
-            local forwardNudge = forwardDirection * 1.5
-            rootPart.CFrame = rootPart.CFrame + forwardNudge
-            
-            task.wait(0.3)
+            rootPart.AssemblyLinearVelocity = Vector3.new(vel.X, 50, vel.Z)
+
+            task.wait(0.04)
+            for i = 1, 5 do
+                if not rootPart then break end
+                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 1.2, 0)
+                task.wait(0.015)
+            end
+
+            if rootPart then
+                rootPart.CFrame = rootPart.CFrame + forwardDirection * 3
+            end
+
+            task.wait(0.4)
+            isWallHopping = false
             wallHopDebounce = false
         end)
     end
@@ -755,13 +861,13 @@ end)
 --------------------------------------------------
 -- COMBAT PAGE BUTTONS
 --------------------------------------------------
-local AutoSwingButton = CreateButton(CombatPage, "AUTO SWING     OFF", UDim2.new(0, 5, 0, 5), UDim2.new(1, -10, 0, 26))
+local AntiKnockbackButton = CreateButton(CombatPage, "ANTI KNOCKBACK     OFF", UDim2.new(0, 5, 0, 5), UDim2.new(1, -10, 0, 26))
 local AutoLockButton = CreateButton(CombatPage, "AUTO LOCK     OFF", UDim2.new(0, 5, 0, 40), UDim2.new(1, -10, 0, 26))
 
-AutoSwingButton.MouseButton1Click:Connect(function()
-    autoSwingEnabled = not autoSwingEnabled
-    AutoSwingButton.Text = "AUTO SWING     " .. (autoSwingEnabled and "ON" or "OFF")
-    if autoSwingEnabled then startAutoSwing() else stopAutoSwing() end
+AntiKnockbackButton.MouseButton1Click:Connect(function()
+    antiKnockbackEnabled = not antiKnockbackEnabled
+    AntiKnockbackButton.Text = "ANTI KNOCKBACK     " .. (antiKnockbackEnabled and "ON" or "OFF")
+    if antiKnockbackEnabled then startAntiKnockback() else stopAntiKnockback() end
 end)
 
 AutoLockButton.MouseButton1Click:Connect(function()
