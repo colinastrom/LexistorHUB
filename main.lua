@@ -232,9 +232,11 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (CLEAN - NAME / MPS / MUTATION)
+-- PETS ESP (CLEAN + FILTER)
 --------------------------------------------------
 local espTracker = {}
+local petFilterName = "" -- Фильтр по имени (пусто = все)
+local petFilterMPS = 0   -- Фильтр по MPS (0 = все)
 
 local function removePetESP(pet)
     local esp = espTracker[pet]
@@ -261,6 +263,20 @@ local function getPetMPS(pet)
     return "?"
 end
 
+local function getPetMPSValue(pet)
+    local mpsText = getPetMPS(pet)
+    -- Извлекаем число из текста типа "$7.3m/s" -> 7300000
+    local num = mpsText:gsub("[%$%,%/s]", "")
+    local mult = 1
+    if mpsText:lower():find("k") then mult = 1000 end
+    if mpsText:lower():find("m") then mult = 1000000 end
+    if mpsText:lower():find("b") then mult = 1000000000 end
+    
+    local val = tonumber(num)
+    if val then return val * mult end
+    return 0
+end
+
 local function getPetMutation(pet)
     local tag = pet:FindFirstChild("ItemNameTag", true)
     if tag then
@@ -274,6 +290,22 @@ local function getPetMutation(pet)
         return mutAttr
     end
     return nil
+end
+
+-- Проверка фильтра
+local function passesFilter(pet)
+    local name = getPetName(pet):lower()
+    local mps = getPetMPSValue(pet)
+    
+    if petFilterName ~= "" and not name:find(petFilterName:lower()) then
+        return false
+    end
+    
+    if petFilterMPS > 0 and mps < petFilterMPS then
+        return false
+    end
+    
+    return true
 end
 
 local function createPetESP(pet)
@@ -303,7 +335,6 @@ local function createPetESP(pet)
     layout.Padding = UDim.new(0, 1)
     layout.Parent = billboard
     
-    -- 1. ИМЯ (белый, сверху)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PetName"
     nameLabel.Size = UDim2.new(1, 0, 0, 14)
@@ -319,7 +350,6 @@ local function createPetESP(pet)
     nameStroke.Color = Color3.new(0, 0, 0)
     nameStroke.Parent = nameLabel
     
-    -- 2. ДОХОД (зелёный, посередине)
     local mpsLabel = Instance.new("TextLabel")
     mpsLabel.Name = "MPS"
     mpsLabel.Size = UDim2.new(1, 0, 0, 13)
@@ -335,7 +365,6 @@ local function createPetESP(pet)
     mpsStroke.Color = Color3.new(0, 0, 0)
     mpsStroke.Parent = mpsLabel
     
-    -- 3. МУТАЦИЯ (золотой, снизу, только если есть)
     local mutLabel = Instance.new("TextLabel")
     mutLabel.Name = "Mutation"
     mutLabel.Size = UDim2.new(1, 0, 0, 13)
@@ -363,6 +392,16 @@ local function createPetESP(pet)
     highlight.Parent = pet
     
     local function updateESP()
+        -- Проверка фильтра
+        if not passesFilter(pet) then
+            billboard.Enabled = false
+            highlight.Enabled = false
+            return
+        else
+            billboard.Enabled = petsEspEnabled
+            highlight.Enabled = petsEspEnabled
+        end
+        
         local mut = getPetMutation(pet)
         if mut then
             mutLabel.Text = mut
@@ -453,7 +492,6 @@ task.spawn(function()
         end
     end
 end)
-
 --------------------------------------------------
 -- ANTI KNOCKBACK (POSITION LOCK)
 --------------------------------------------------
@@ -879,6 +917,123 @@ ServerPage.Parent = Main
 local AutoRunButton = CreateButton(MainPage, "AUTO RUN     OFF", UDim2.new(0, 5, 0, 5), UDim2.new(1, -10, 0, 26))
 local ESPButton = CreateButton(MainPage, "ESP     OFF", UDim2.new(0, 5, 0, 40), UDim2.new(1, -10, 0, 26))
 local PetsEspButton = CreateButton(MainPage, "PETS ESP     OFF", UDim2.new(0, 5, 0, 75), UDim2.new(1, -10, 0, 26))
+-- Кнопка открытия меню фильтров
+local PetFilterButton = CreateButton(MainPage, "FILTER", UDim2.new(0, 90, 0, 75), UDim2.new(0, 70, 0, 26))
+
+-- Меню фильтров
+local PetFilterMenu = Instance.new("Frame")
+PetFilterMenu.Size = UDim2.new(0, 260, 0, 120)
+PetFilterMenu.Position = UDim2.new(0.5, -130, 0.5, -60)
+PetFilterMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+PetFilterMenu.BorderSizePixel = 0
+PetFilterMenu.Visible = false
+PetFilterMenu.Active = true
+PetFilterMenu.ZIndex = 20
+PetFilterMenu.Parent = ScreenGui
+
+MakeDraggable(PetFilterMenu)
+
+local PetFilterCorner = Instance.new("UICorner")
+PetFilterCorner.CornerRadius = UDim.new(0, 8)
+PetFilterCorner.Parent = PetFilterMenu
+
+local PetFilterTitle = Instance.new("TextLabel")
+PetFilterTitle.Size = UDim2.new(1, -10, 0, 22)
+PetFilterTitle.Position = UDim2.new(0, 5, 0, 3)
+PetFilterTitle.BackgroundTransparency = 1
+PetFilterTitle.Text = "PET FILTERS"
+PetFilterTitle.TextColor3 = Color3.fromRGB(235, 235, 240)
+PetFilterTitle.TextSize = 10
+PetFilterTitle.Font = Enum.Font.GothamBold
+PetFilterTitle.TextXAlignment = Enum.TextXAlignment.Left
+PetFilterTitle.ZIndex = 21
+PetFilterTitle.Parent = PetFilterMenu
+
+-- Поле имени
+local nameLabel = Instance.new("TextLabel")
+nameLabel.Size = UDim2.new(0.4, 0, 0, 20)
+nameLabel.Position = UDim2.new(0, 5, 0, 30)
+nameLabel.BackgroundTransparency = 1
+nameLabel.Text = "Name:"
+nameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+nameLabel.TextSize = 9
+nameLabel.Font = Enum.Font.Gotham
+nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+nameLabel.ZIndex = 21
+nameLabel.Parent = PetFilterMenu
+
+local nameBox = Instance.new("TextBox")
+nameBox.Size = UDim2.new(0.55, 0, 0, 20)
+nameBox.Position = UDim2.new(0.4, 0, 0, 30)
+nameBox.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+nameBox.BorderSizePixel = 0
+nameBox.Text = ""
+nameBox.PlaceholderText = "e.g. Dragon"
+nameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+nameBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+nameBox.TextSize = 9
+nameBox.Font = Enum.Font.Gotham
+nameBox.ZIndex = 21
+nameBox.Parent = PetFilterMenu
+
+local nameBoxCorner = Instance.new("UICorner")
+nameBoxCorner.CornerRadius = UDim.new(0, 4)
+nameBoxCorner.Parent = nameBox
+
+-- Поле MPS
+local mpsLabel = Instance.new("TextLabel")
+mpsLabel.Size = UDim2.new(0.4, 0, 0, 20)
+mpsLabel.Position = UDim2.new(0, 5, 0, 55)
+mpsLabel.BackgroundTransparency = 1
+mpsLabel.Text = "Min MPS:"
+mpsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+mpsLabel.TextSize = 9
+mpsLabel.Font = Enum.Font.Gotham
+mpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+mpsLabel.ZIndex = 21
+mpsLabel.Parent = PetFilterMenu
+
+local mpsBox = Instance.new("TextBox")
+mpsBox.Size = UDim2.new(0.55, 0, 0, 20)
+mpsBox.Position = UDim2.new(0.4, 0, 0, 55)
+mpsBox.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+mpsBox.BorderSizePixel = 0
+mpsBox.Text = "0"
+mpsBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+mpsBox.TextSize = 9
+mpsBox.Font = Enum.Font.Gotham
+mpsBox.ZIndex = 21
+mpsBox.Parent = PetFilterMenu
+
+local mpsBoxCorner = Instance.new("UICorner")
+mpsBoxCorner.CornerRadius = UDim.new(0, 4)
+mpsBoxCorner.Parent = mpsBox
+
+-- Кнопка Apply
+local applyBtn = CreateButton(PetFilterMenu, "APPLY", UDim2.new(0.2, 5, 0, 85), UDim2.new(0.6, -10, 0, 25))
+applyBtn.ZIndex = 21
+
+-- Кнопка Clear
+local clearBtn = CreateButton(PetFilterMenu, "CLEAR", UDim2.new(0.8, 0, 0, 85), UDim2.new(0.2, -5, 0, 25))
+clearBtn.ZIndex = 21
+
+PetFilterButton.MouseButton1Click:Connect(function()
+    PetFilterMenu.Visible = not PetFilterMenu.Visible
+end)
+
+applyBtn.MouseButton1Click:Connect(function()
+    petFilterName = nameBox.Text
+    petFilterMPS = tonumber(mpsBox.Text) or 0
+    PetFilterMenu.Visible = false
+end)
+
+clearBtn.MouseButton1Click:Connect(function()
+    nameBox.Text = ""
+    mpsBox.Text = "0"
+    petFilterName = ""
+    petFilterMPS = 0
+end)
+
 local AntiFallButton = CreateButton(MainPage, "ANTI FALL     OFF", UDim2.new(0, 5, 0, 110), UDim2.new(1, -10, 0, 26))
 local AntiCheatButton = CreateButton(MainPage, "ANTI ANTI-CHEAT     OFF", UDim2.new(0, 5, 0, 145), UDim2.new(1, -10, 0, 26))
 local AntiAfkButton = CreateButton(MainPage, "ANTI AFK     OFF", UDim2.new(0, 5, 0, 180), UDim2.new(1, -10, 0, 26))
@@ -995,7 +1150,7 @@ WallHopButton.MouseButton1Click:Connect(function()
 end)
 
 --------------------------------------------------
--- ENTER / EXIT BASE
+-- ENTER / EXIT BASE (PHYSICS DROP)
 --------------------------------------------------
 local baseDebounce = false
 
@@ -1005,32 +1160,42 @@ local function smoothVerticalMove(distance, direction)
 
     local startPos = rootPart.Position
     local targetY = startPos.Y + (distance * direction)
-
-    local steps = math.random(60, 80)
-    local stepDelay = math.random(12, 18) / 1000
-    local stepSize = distance / steps * direction
-
+    
     task.spawn(function()
-        for i = 1, steps do
-            if not rootPart then break end
-            local jitter = math.random(-2, 2) / 100
-            rootPart.CFrame = rootPart.CFrame + Vector3.new(
-                jitter,
-                stepSize + (math.random(-5, 5) / 1000),
-                jitter
-            )
-            task.wait(stepDelay + (math.random(0, 3) / 1000))
+        -- Отключаем коллизию чтобы не застрять в блоках
+        local originalCollide = rootPart.CanCollide
+        pcall(function() rootPart.CanCollide = false end)
+        
+        -- Создаём BodyVelocity для физического движения
+        local bv = Instance.new("BodyVelocity")
+        bv.MaxForce = Vector3.new(0, math.huge, 0)
+        -- Скорость: 60 вниз, 40 вверх (плавно но быстро)
+        bv.Velocity = Vector3.new(0, direction * 50, 0)
+        bv.Parent = rootPart
+        
+        local startTime = tick()
+        local duration = distance / 50 -- Время = расстояние / скорость
+        
+        -- Летим пока не достигнем цели
+        while rootPart and tick() - startTime < duration do
+            task.wait(0.01)
         end
-
+        
+        -- Останавливаемся
+        if bv then bv:Destroy() end
+        
+        -- Возвращаем коллизию
         if rootPart then
+            pcall(function() rootPart.CanCollide = originalCollide end)
+            -- Точная финальная позиция
             rootPart.CFrame = CFrame.new(
                 rootPart.Position.X,
                 targetY,
                 rootPart.Position.Z
             ) * CFrame.Angles(0, math.rad(rootPart.Orientation.Y), 0)
         end
-
-        task.wait(math.random(40, 60) / 100)
+        
+        task.wait(0.5)
         baseDebounce = false
     end)
 end
