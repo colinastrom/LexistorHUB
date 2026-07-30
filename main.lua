@@ -49,20 +49,34 @@ local function MakeDraggable(frame)
 end
 
 --------------------------------------------------
--- NOTIFICATION SYSTEM (BASE ONLY)
+-- NOTIFICATION SYSTEM (TOP RIGHT)
 --------------------------------------------------
 local NotifyGui = Instance.new("ScreenGui")
 NotifyGui.Name = "SSSNotify"
 NotifyGui.ResetOnSpawn = false
 NotifyGui.Parent = game:GetService("CoreGui")
 
+local NotifyHolder = Instance.new("Frame")
+NotifyHolder.Name = "Holder"
+NotifyHolder.Size = UDim2.new(0, 300, 1, 0)
+NotifyHolder.Position = UDim2.new(1, -320, 0, 20)
+NotifyHolder.BackgroundTransparency = 1
+NotifyHolder.Parent = NotifyGui
+
+local NotifyLayout = Instance.new("UIListLayout")
+NotifyLayout.FillDirection = Enum.FillDirection.Vertical
+NotifyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+NotifyLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+NotifyLayout.Padding = UDim.new(0, 10)
+NotifyLayout.Parent = NotifyHolder
+
 local function notify(title, text)
     local notif = Instance.new("Frame")
     notif.Size = UDim2.new(0, 280, 0, 70)
-    notif.Position = UDim2.new(0.5, -140, 0.5, -35)
+    notif.Position = UDim2.new(0, 300, 0, 0)
     notif.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
     notif.BorderSizePixel = 0
-    notif.Parent = NotifyGui
+    notif.Parent = NotifyHolder
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
@@ -73,7 +87,6 @@ local function notify(title, text)
     stroke.Thickness = 1.5
     stroke.Parent = notif
 
-    -- Зелёный кружок со щитом
     local iconCircle = Instance.new("Frame")
     iconCircle.Size = UDim2.new(0, 40, 0, 40)
     iconCircle.Position = UDim2.new(0, 12, 0.5, -20)
@@ -116,7 +129,6 @@ local function notify(title, text)
     textLbl.TextXAlignment = Enum.TextXAlignment.Left
     textLbl.Parent = notif
 
-    -- Появление
     notif.BackgroundTransparency = 1
     iconCircle.BackgroundTransparency = 1
     shieldIcon.TextTransparency = 1
@@ -124,28 +136,25 @@ local function notify(title, text)
     textLbl.TextTransparency = 1
     stroke.Transparency = 1
 
-    local tweenIn = TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {BackgroundTransparency = 0})
+    local tweenIn = TweenService:Create(notif, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0})
     tweenIn:Play()
+    TweenService:Create(stroke, TweenInfo.new(0.4), {Transparency = 0}):Play()
+    TweenService:Create(iconCircle, TweenInfo.new(0.4), {BackgroundTransparency = 0}):Play()
+    TweenService:Create(shieldIcon, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
+    TweenService:Create(titleLbl, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
+    TweenService:Create(textLbl, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
 
-    TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 0}):Play()
-    TweenService:Create(iconCircle, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
-    TweenService:Create(shieldIcon, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
-    TweenService:Create(titleLbl, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
-    TweenService:Create(textLbl, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
-
-    task.wait(3)
-
-    -- Исчезновение
-    local tweenOut = TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {BackgroundTransparency = 1})
-    tweenOut:Play()
-    TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 1}):Play()
-    TweenService:Create(iconCircle, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(shieldIcon, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
-    TweenService:Create(titleLbl, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
-    TweenService:Create(textLbl, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
-
-    tweenOut.Completed:Wait()
-    notif:Destroy()
+    task.delay(3, function()
+        local tweenOut = TweenService:Create(notif, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0, 300, 0, 0), BackgroundTransparency = 1})
+        tweenOut:Play()
+        TweenService:Create(stroke, TweenInfo.new(0.4), {Transparency = 1}):Play()
+        TweenService:Create(iconCircle, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(shieldIcon, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        TweenService:Create(titleLbl, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        TweenService:Create(textLbl, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        tweenOut.Completed:Wait()
+        notif:Destroy()
+    end)
 end
 
 --------------------------------------------------
@@ -179,7 +188,6 @@ local LOCK_STATE_ATTR = "LockState"
 local STATE_IDLE = "Idle"
 local STATE_LOCKED = "Locked"
 
--- Anti-Knockback state
 local lastJumpTime = 0
 local lastSafePos = nil
 local isCountering = false
@@ -634,7 +642,7 @@ local function stopAntiKnockback()
 end
 
 --------------------------------------------------
--- AUTO LOCK BASE (с уведомлениями)
+-- AUTO LOCK BASE
 --------------------------------------------------
 local function findMyPlot()
     local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -667,7 +675,6 @@ local function startAutoLock()
                     local currentState = lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
                     local pad = lockObj:FindFirstChild("Pad")
 
-                    -- Уведомление при смене состояния
                     if currentState ~= lastLockState then
                         if currentState == STATE_IDLE then
                             task.spawn(function()
@@ -681,7 +688,6 @@ local function startAutoLock()
                         lastLockState = currentState
                     end
 
-                    -- Лочим если Idle
                     if currentState == STATE_IDLE and pad then
                         pcall(function()
                             firetouchinterest(rootPart, pad, 0)
@@ -885,25 +891,36 @@ MainCorner.CornerRadius = UDim.new(0, 9)
 MainCorner.Parent = Main
 
 local TopBar = Instance.new("Frame")
-TopBar.Size = UDim2.new(1, 0, 0, 32)
+TopBar.Size = UDim2.new(1, 0, 0, 40)
 TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
 TopBar.BorderSizePixel = 0
 TopBar.Parent = Main
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -40, 1, 0)
-Title.Position = UDim2.new(0, 9, 0, 0)
+Title.Size = UDim2.new(1, -40, 0, 20)
+Title.Position = UDim2.new(0, 9, 0, 4)
 Title.BackgroundTransparency = 1
 Title.Text = "SSS HUB STEAL"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
-Title.TextSize = 11
+Title.TextSize = 12
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = TopBar
 
+local SubTitle = Instance.new("TextLabel")
+SubTitle.Size = UDim2.new(1, -40, 0, 14)
+SubTitle.Position = UDim2.new(0, 9, 0, 22)
+SubTitle.BackgroundTransparency = 1
+SubTitle.Text = "GAME ENHANCEMENT"
+SubTitle.TextColor3 = Color3.fromRGB(150, 150, 160)
+SubTitle.TextSize = 8
+SubTitle.Font = Enum.Font.Gotham
+SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+SubTitle.Parent = TopBar
+
 local HideButton = Instance.new("TextButton")
 HideButton.Size = UDim2.new(0, 22, 0, 22)
-HideButton.Position = UDim2.new(1, -27, 0, 5)
+HideButton.Position = UDim2.new(1, -27, 0, 9)
 HideButton.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
 HideButton.BorderSizePixel = 0
 HideButton.Text = "—"
@@ -931,26 +948,26 @@ local function CreateButton(parent, text, position, size)
     return button
 end
 
-local MainTab = CreateButton(Main, "MAIN", UDim2.new(0, 3, 0, 38), UDim2.new(0.33, -4, 0, 25))
-local CombatTab = CreateButton(Main, "COMBAT", UDim2.new(0.33, 1, 0, 38), UDim2.new(0.33, -4, 0, 25))
-local ServerTab = CreateButton(Main, "SERVER", UDim2.new(0.66, -1, 0, 38), UDim2.new(0.34, -4, 0, 25))
+local MainTab = CreateButton(Main, "MAIN", UDim2.new(0, 3, 0, 45), UDim2.new(0.33, -4, 0, 25))
+local CombatTab = CreateButton(Main, "COMBAT", UDim2.new(0.33, 1, 0, 45), UDim2.new(0.33, -4, 0, 25))
+local ServerTab = CreateButton(Main, "SERVER", UDim2.new(0.66, -1, 0, 45), UDim2.new(0.34, -4, 0, 25))
 
 local MainPage = Instance.new("Frame")
-MainPage.Size = UDim2.new(1, -10, 1, -70)
-MainPage.Position = UDim2.new(0, 5, 0, 68)
+MainPage.Size = UDim2.new(1, -10, 1, -80)
+MainPage.Position = UDim2.new(0, 5, 0, 75)
 MainPage.BackgroundTransparency = 1
 MainPage.Parent = Main
 
 local CombatPage = Instance.new("Frame")
-CombatPage.Size = UDim2.new(1, -10, 1, -70)
-CombatPage.Position = UDim2.new(0, 5, 0, 68)
+CombatPage.Size = UDim2.new(1, -10, 1, -80)
+CombatPage.Position = UDim2.new(0, 5, 0, 75)
 CombatPage.BackgroundTransparency = 1
 CombatPage.Visible = false
 CombatPage.Parent = Main
 
 local ServerPage = Instance.new("Frame")
-ServerPage.Size = UDim2.new(1, -10, 1, -70)
-ServerPage.Position = UDim2.new(0, 5, 0, 68)
+ServerPage.Size = UDim2.new(1, -10, 1, -80)
+ServerPage.Position = UDim2.new(0, 5, 0, 75)
 ServerPage.BackgroundTransparency = 1
 ServerPage.Visible = false
 ServerPage.Parent = Main
@@ -1006,8 +1023,8 @@ end)
 local PetFilterButton = CreateButton(MainPage, "FILTER", UDim2.new(0, 90, 0, 75), UDim2.new(0, 70, 0, 26))
 
 local PetFilterMenu = Instance.new("Frame")
-PetFilterMenu.Size = UDim2.new(0, 260, 0, 120)
-PetFilterMenu.Position = UDim2.new(0.5, -130, 0.5, -60)
+PetFilterMenu.Size = UDim2.new(0, 260, 0, 140)
+PetFilterMenu.Position = UDim2.new(0.5, -130, 0.5, -70)
 PetFilterMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
 PetFilterMenu.BorderSizePixel = 0
 PetFilterMenu.Visible = false
@@ -1091,8 +1108,13 @@ local mpsBoxCorner = Instance.new("UICorner")
 mpsBoxCorner.CornerRadius = UDim.new(0, 4)
 mpsBoxCorner.Parent = mpsBox
 
-local applyBtn = CreateButton(PetFilterMenu, "APPLY", UDim2.new(0.2, 5, 0, 85), UDim2.new(0.6, -10, 0, 25))
+-- Кнопка APPLY
+local applyBtn = CreateButton(PetFilterMenu, "APPLY", UDim2.new(0.1, 5, 0, 85), UDim2.new(0.4, -5, 0, 25))
 applyBtn.ZIndex = 21
+
+-- Кнопка CLEAR
+local clearBtn = CreateButton(PetFilterMenu, "CLEAR", UDim2.new(0.5, 0, 0, 85), UDim2.new(0.4, -5, 0, 25))
+clearBtn.ZIndex = 21
 
 PetFilterButton.MouseButton1Click:Connect(function()
     PetFilterMenu.Visible = not PetFilterMenu.Visible
@@ -1109,6 +1131,13 @@ applyBtn.MouseButton1Click:Connect(function()
     local val = tonumber(numStr)
     if val then petFilterMPS = val * mult else petFilterMPS = 0 end
     PetFilterMenu.Visible = false
+end)
+
+clearBtn.MouseButton1Click:Connect(function()
+    nameBox.Text = ""
+    mpsBox.Text = "0"
+    petFilterName = ""
+    petFilterMPS = 0
 end)
 
 --------------------------------------------------
