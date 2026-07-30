@@ -1,5 +1,6 @@
 --// SSSHUB STEAL + MAIN
 --// By Rosomax0 • Developer
+--// GGG
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
