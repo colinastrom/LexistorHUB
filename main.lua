@@ -15,6 +15,79 @@ local LocalPlayer = Players.LocalPlayer
 local PlaceId = game.PlaceId
 
 --------------------------------------------------
+-- NOTIFICATION SYSTEM
+--------------------------------------------------
+local NotifyGui = Instance.new("ScreenGui")
+NotifyGui.Name = "SSSNotify"
+NotifyGui.ResetOnSpawn = false
+NotifyGui.Parent = game:GetService("CoreGui")
+
+local NotifyHolder = Instance.new("Frame")
+NotifyHolder.Name = "Holder"
+NotifyHolder.Size = UDim2.new(0, 300, 1, 0)
+NotifyHolder.Position = UDim2.new(1, -320, 0, 20)
+NotifyHolder.BackgroundTransparency = 1
+NotifyHolder.Parent = NotifyGui
+
+local NotifyLayout = Instance.new("UIListLayout")
+NotifyLayout.FillDirection = Enum.FillDirection.Vertical
+NotifyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+NotifyLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+NotifyLayout.Padding = UDim.new(0, 10)
+NotifyLayout.Parent = NotifyHolder
+
+local function notify(title, text, duration)
+    duration = duration or 3
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 280, 0, 60)
+    notif.Position = UDim2.new(0, 300, 0, 0)
+    notif.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    notif.BorderSizePixel = 0
+    notif.Parent = NotifyHolder
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = notif
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(65, 95, 145)
+    stroke.Thickness = 1.5
+    stroke.Parent = notif
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -20, 0, 20)
+    titleLbl.Position = UDim2.new(0, 10, 0, 8)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = title
+    titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextSize = 14
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.Parent = notif
+
+    local textLbl = Instance.new("TextLabel")
+    textLbl.Size = UDim2.new(1, -20, 0, 16)
+    textLbl.Position = UDim2.new(0, 10, 0, 30)
+    textLbl.BackgroundTransparency = 1
+    textLbl.Text = text
+    textLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    textLbl.Font = Enum.Font.Gotham
+    textLbl.TextSize = 12
+    textLbl.TextXAlignment = Enum.TextXAlignment.Left
+    textLbl.Parent = notif
+
+    local tweenIn = TweenService:Create(notif, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)})
+    tweenIn:Play()
+
+    task.delay(duration, function()
+        local tweenOut = TweenService:Create(notif, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0, 300, 0, 0)})
+        tweenOut:Play()
+        tweenOut.Completed:Wait()
+        notif:Destroy()
+    end)
+end
+
+--------------------------------------------------
 -- DRAGGABLE FUNCTION
 --------------------------------------------------
 local function MakeDraggable(frame)
@@ -49,7 +122,7 @@ local function MakeDraggable(frame)
 end
 
 --------------------------------------------------
--- SETTINGS
+-- SETTINGS & STATE
 --------------------------------------------------
 local FAST_SPEED = 38
 local UP_DISTANCE = 20
@@ -63,27 +136,26 @@ local petsEspEnabled = false
 local antiKnockbackEnabled = false
 local autoLockEnabled = false
 local antiAfkEnabled = false
-local antiCheatBypassEnabled = false
 
 local humanoid
 local rootPart
 local normalSpeed = 16
+local isWallHopping = false
 
 local ESPs = {}
 local AntiFall
 local antiKnockbackConnection
 local autoLockConnection
 local antiAfkConnection
-local antiCheatConnection
+
+local LOCK_STATE_ATTR = "LockState"
+local STATE_IDLE = "Idle"
 
 -- Anti-Knockback state
 local lastJumpTime = 0
 local lastSafePos = nil
 local isCountering = false
 local counterEndTime = 0
-
-local LOCK_STATE_ATTR = "LockState"
-local STATE_IDLE = "Idle"
 
 --------------------------------------------------
 -- CHARACTER
@@ -93,7 +165,6 @@ local function setupCharacter(character)
     rootPart = character:WaitForChild("HumanoidRootPart")
     normalSpeed = humanoid.WalkSpeed
     
-    -- Track jumps for anti-knockback
     humanoid.StateChanged:Connect(function(_, newState)
         if newState == Enum.HumanoidStateType.Jumping then
             lastJumpTime = os.clock()
@@ -232,7 +303,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (CLEAN + FILTER + FIXED PARSER)
+-- PETS ESP
 --------------------------------------------------
 local espTracker = {}
 local petFilterName = "" 
@@ -263,7 +334,6 @@ local function getPetMPS(pet)
     return "?"
 end
 
--- Новый парсер: понимает 1m, 1000000, 1.5M, $7.3m/s
 local function getPetMPSValue(pet)
     local mpsText = getPetMPS(pet)
     local lowerText = mpsText:lower()
@@ -273,7 +343,6 @@ local function getPetMPSValue(pet)
     elseif lowerText:find("m") then mult = 1000000
     elseif lowerText:find("b") then mult = 1000000000 end
     
-    -- Извлекаем только цифры и точку
     local numStr = mpsText:gsub("[^%d%.]", "")
     local val = tonumber(numStr)
     
@@ -494,8 +563,9 @@ task.spawn(function()
         end
     end
 end)
+
 --------------------------------------------------
--- ANTI KNOCKBACK (POSITION LOCK)
+-- ANTI KNOCKBACK
 --------------------------------------------------
 local function startAntiKnockback()
     if antiKnockbackConnection then return end
@@ -511,22 +581,18 @@ local function startAntiKnockback()
         local timeSinceJump = now - lastJumpTime
         local isJumpVelocity = timeSinceJump < 0.3
         
-        -- Детект knocksback: горизонтальная скорость > 40 или вертикальная > 35 (не прыжок)
         if horizontalSpeed > 40 or (upwardSpeed > 35 and not isJumpVelocity) then
             isCountering = true
             counterEndTime = now + 0.5
         end
         
         if isCountering and now < counterEndTime then
-            -- ПОЛНОСТЬЮ обнуляем velocity
             rootPart.AssemblyLinearVelocity = Vector3.zero
-            -- Телепортируем обратно на безопасную позицию
             if lastSafePos then
                 rootPart.CFrame = CFrame.new(lastSafePos)
             end
         else
             isCountering = false
-            -- Сохраняем безопасную позицию каждый кадр
             lastSafePos = rootPart.Position
         end
     end)
@@ -540,7 +606,7 @@ local function stopAntiKnockback()
 end
 
 --------------------------------------------------
--- AUTO LOCK BASE (БЕЗ 20-минутной блокировки)
+-- AUTO LOCK BASE (БЕЗ ПРОПУСКА КУЛДАУНА)
 --------------------------------------------------
 local function findMyPlot()
     local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -557,36 +623,22 @@ local function findMyPlot()
     return nil
 end
 
-local function getNetworkModule()
-    local shared = ReplicatedStorage:FindFirstChild("Shared")
-    if shared then
-        local services = shared:FindFirstChild("Services")
-        if services then
-            return services:FindFirstChild("Network")
-        end
-    end
-    return nil
-end
-
 local function startAutoLock()
     if autoLockConnection then return end
-
-    local skipCooldownDebounce = false
 
     autoLockConnection = task.spawn(function()
         while autoLockEnabled do
             local myPlot = findMyPlot()
 
             if myPlot and rootPart and humanoid then
-                -- Ищем ТОЛЬКО "Lock" (не "Lock 24hr")
                 local lockObj = myPlot:FindFirstChild("Lock")
                 
                 if lockObj and lockObj.Name == "Lock" then
                     local currentState = lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
                     local pad = lockObj:FindFirstChild("Pad")
 
+                    -- Лочим ТОЛЬКО если состояние Idle
                     if currentState == STATE_IDLE and pad then
-                        -- Трогаем ТОЛЬКО Pad
                         pcall(function()
                             firetouchinterest(rootPart, pad, 0)
                         end)
@@ -594,41 +646,11 @@ local function startAutoLock()
                         pcall(function()
                             firetouchinterest(rootPart, pad, 1)
                         end)
-
-                    elseif currentState == "Cooldown" then
-                        if not skipCooldownDebounce then
-                            skipCooldownDebounce = true
-
-                            -- Скип кулдауна через Network
-                            local netMod = getNetworkModule()
-                            if netMod then
-                                local success, network = pcall(function()
-                                    return require(netMod)
-                                end)
-                                if success and network and network.send then
-                                    pcall(function()
-                                        network.send("request_skip_cooldown", myPlot.Name)
-                                    end)
-                                end
-                            end
-
-                            -- Скип через ProximityPrompt на Pad
-                            if pad then
-                                local prompt = pad:FindFirstChild("SkipCooldownPrompt")
-                                if prompt and prompt:IsA("ProximityPrompt") then
-                                    pcall(function()
-                                        fireproximityprompt(prompt)
-                                    end)
-                                end
-                            end
-
-                            task.wait(5)
-                            skipCooldownDebounce = false
-                        end
+                    -- Если Cooldown — просто ждём, ничего не делаем
                     end
                 end
             end
-            task.wait(0.5)
+            task.wait(1) -- Проверяем каждую секунду
         end
     end)
 end
@@ -641,66 +663,7 @@ local function stopAutoLock()
 end
 
 --------------------------------------------------
--- ANTI ANTI-CHEAT (LIGHTWEIGHT)
---------------------------------------------------
-local kickHooked = false
-
-local function startAntiCheatBypass()
-    if antiCheatConnection then return end
-
-    if not kickHooked then
-        kickHooked = true
-        pcall(function()
-            if hookmetamethod then
-                local oldNamecall
-                oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-                    local method = getnamecallmethod()
-                    if method == "Kick" and self == LocalPlayer then
-                        return
-                    end
-                    return oldNamecall(self, ...)
-                end)
-            end
-        end)
-        pcall(function()
-            if hookmetamethod then
-                local oldIndex
-                oldIndex = hookmetamethod(game, "__index", function(self, key)
-                    if key == "Kick" and self == LocalPlayer then
-                        return function() end
-                    end
-                    return oldIndex(self, key)
-                end)
-            end
-        end)
-    end
-
-    antiCheatConnection = task.spawn(function()
-        while antiCheatBypassEnabled do
-            local playerData = LocalPlayer:FindFirstChild("Player Data")
-            if playerData then
-                local stats = playerData:FindFirstChild("stats")
-                if stats then
-                    local bans = stats:FindFirstChild("#Anti Cheat Bans")
-                    local kicks = stats:FindFirstChild("#Anti Cheat Kicks")
-                    if bans then pcall(function() bans.Value = 0 end) end
-                    if kicks then pcall(function() kicks.Value = 0 end) end
-                end
-            end
-            task.wait(3)
-        end
-    end)
-end
-
-local function stopAntiCheatBypass()
-    if antiCheatConnection then
-        task.cancel(antiCheatConnection)
-        antiCheatConnection = nil
-    end
-end
-
---------------------------------------------------
--- WALL HOP (ПЛАВНЫЙ ПОЛЁТ + ЗАЧИСТКА КРАЯ)
+-- WALL HOP
 --------------------------------------------------
 local wallHopActive = false
 local wallHopWasClimbing = false
@@ -721,22 +684,18 @@ RunService.Heartbeat:Connect(function()
     local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
 
     if result then
-        -- Блоки впереди есть — плавно поднимаем вверх
         wallHopActive = true
         wallHopWasClimbing = true
         wallHopClearTimer = 0
         
-        local upVel = 20 + math.random(-1, 3) -- 19-23, чуть быстрее
+        local upVel = 20 + math.random(-1, 3)
         local currentVel = rootPart.AssemblyLinearVelocity
         rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
     else
-        -- Блоков впереди нет
         if wallHopWasClimbing then
-            -- Мы только что лазили — даём рывок чтобы перелезть край
             wallHopClearTimer = wallHopClearTimer + 1
             
             if wallHopClearTimer < 8 then
-                -- Рывок вверх + вперёд (8 кадров ≈ 0.13 сек)
                 local currentVel = rootPart.AssemblyLinearVelocity
                 rootPart.AssemblyLinearVelocity = Vector3.new(
                     forwardDirection.X * 25,
@@ -744,7 +703,6 @@ RunService.Heartbeat:Connect(function()
                     forwardDirection.Z * 25
                 )
             else
-                -- Закончили зачистку
                 wallHopWasClimbing = false
                 wallHopClearTimer = 0
             end
@@ -753,6 +711,7 @@ RunService.Heartbeat:Connect(function()
         wallHopActive = false
     end
 end)
+
 --------------------------------------------------
 -- ANTI FALL CIRCLE
 --------------------------------------------------
@@ -799,6 +758,46 @@ local function stopAntiAfk()
 end
 
 --------------------------------------------------
+-- ENTER / EXIT BASE
+--------------------------------------------------
+local baseDebounce = false
+
+local function smoothVerticalMove(distance, direction)
+    if not rootPart or baseDebounce then return end
+    baseDebounce = true
+
+    local startPos = rootPart.Position
+    local targetY = startPos.Y + (distance * direction)
+    
+    task.spawn(function()
+        local originalCollide = rootPart.CanCollide
+        pcall(function() rootPart.CanCollide = false end)
+        
+        local steps = math.abs(distance) * 4
+        local stepSize = (distance / steps) * direction
+        
+        for i = 1, steps do
+            if not rootPart then break end
+            rootPart.CFrame = rootPart.CFrame + Vector3.new(0, stepSize, 0)
+            task.wait(0.005)
+        end
+        
+        if rootPart then
+            rootPart.CFrame = CFrame.new(
+                rootPart.Position.X,
+                targetY,
+                rootPart.Position.Z
+            ) * CFrame.Angles(0, math.rad(rootPart.Orientation.Y), 0)
+            
+            pcall(function() rootPart.CanCollide = originalCollide end)
+        end
+        
+        task.wait(0.2)
+        baseDebounce = false
+    end)
+end
+
+--------------------------------------------------
 -- SAVED JOB IDS
 --------------------------------------------------
 local FileName = "SavedJobIDs.json"
@@ -820,7 +819,7 @@ local function SaveJobs()
 end
 
 --------------------------------------------------
--- GUI
+-- GUI (MODERN REDESIGN)
 --------------------------------------------------
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SSSHubSteal"
@@ -829,9 +828,9 @@ ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = game:GetService("CoreGui")
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 270, 0, 340)
-Main.Position = UDim2.new(0.5, -135, 0.5, -170)
-Main.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+Main.Size = UDim2.new(0, 280, 0, 350)
+Main.Position = UDim2.new(0.5, -140, 0.5, -175)
+Main.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Parent = ScreenGui
@@ -839,94 +838,197 @@ Main.Parent = ScreenGui
 MakeDraggable(Main)
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 9)
+MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = Main
 
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(45, 45, 55)
+MainStroke.Thickness = 1.5
+MainStroke.Parent = Main
+
+-- Header
 local TopBar = Instance.new("Frame")
-TopBar.Size = UDim2.new(1, 0, 0, 32)
-TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 TopBar.BorderSizePixel = 0
 TopBar.Parent = Main
 
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 10)
+TopBarCorner.Parent = TopBar
+
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -40, 1, 0)
-Title.Position = UDim2.new(0, 9, 0, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "SSS HUB STEAL"
-Title.TextColor3 = Color3.fromRGB(240, 240, 245)
-Title.TextSize = 11
+Title.Text = "SSS HUB"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = TopBar
 
 local HideButton = Instance.new("TextButton")
-HideButton.Size = UDim2.new(0, 22, 0, 22)
-HideButton.Position = UDim2.new(1, -27, 0, 5)
-HideButton.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
+HideButton.Size = UDim2.new(0, 24, 0, 24)
+HideButton.Position = UDim2.new(1, -32, 0.5, -12)
+HideButton.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
 HideButton.BorderSizePixel = 0
 HideButton.Text = "—"
-HideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-HideButton.TextSize = 11
+HideButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+HideButton.TextSize = 12
 HideButton.Font = Enum.Font.GothamBold
 HideButton.Parent = TopBar
 
-local function CreateButton(parent, text, position, size)
-    local button = Instance.new("TextButton")
-    button.Size = size
-    button.Position = position
-    button.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-    button.BorderSizePixel = 0
-    button.Text = text
-    button.TextColor3 = Color3.fromRGB(235, 235, 240)
-    button.TextSize = 8
-    button.Font = Enum.Font.GothamBold
-    button.Parent = parent
+local HideCorner = Instance.new("UICorner")
+HideCorner.CornerRadius = UDim.new(0, 6)
+HideCorner.Parent = HideButton
 
+-- Tab System
+local TabHolder = Instance.new("Frame")
+TabHolder.Size = UDim2.new(1, -20, 0, 30)
+TabHolder.Position = UDim2.new(0, 10, 0, 50)
+TabHolder.BackgroundTransparency = 1
+TabHolder.Parent = Main
+
+local function CreateTabButton(text, position)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.33, -2, 1, 0)
+    btn.Position = position
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    btn.BorderSizePixel = 0
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(180, 180, 180)
+    btn.TextSize = 10
+    btn.Font = Enum.Font.GothamBold
+    btn.Parent = TabHolder
+    
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 5)
-    corner.Parent = button
-
-    return button
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+    
+    return btn
 end
 
-local MainTab = CreateButton(Main, "MAIN", UDim2.new(0, 3, 0, 38), UDim2.new(0.33, -4, 0, 25))
-local CombatTab = CreateButton(Main, "COMBAT", UDim2.new(0.33, 1, 0, 38), UDim2.new(0.33, -4, 0, 25))
-local ServerTab = CreateButton(Main, "SERVER", UDim2.new(0.66, -1, 0, 38), UDim2.new(0.34, -4, 0, 25))
+local MainTab = CreateTabButton("MAIN", UDim2.new(0, 0, 0, 0))
+local CombatTab = CreateTabButton("COMBAT", UDim2.new(0.34, 0, 0, 0))
+local ServerTab = CreateTabButton("SERVER", UDim2.new(0.68, 0, 0, 0))
 
+-- Pages
 local MainPage = Instance.new("Frame")
-MainPage.Size = UDim2.new(1, -10, 1, -70)
-MainPage.Position = UDim2.new(0, 5, 0, 68)
+MainPage.Size = UDim2.new(1, -20, 1, -90)
+MainPage.Position = UDim2.new(0, 10, 0, 85)
 MainPage.BackgroundTransparency = 1
 MainPage.Parent = Main
 
 local CombatPage = Instance.new("Frame")
-CombatPage.Size = UDim2.new(1, -10, 1, -70)
-CombatPage.Position = UDim2.new(0, 5, 0, 68)
+CombatPage.Size = UDim2.new(1, -20, 1, -90)
+CombatPage.Position = UDim2.new(0, 10, 0, 85)
 CombatPage.BackgroundTransparency = 1
 CombatPage.Visible = false
 CombatPage.Parent = Main
 
 local ServerPage = Instance.new("Frame")
-ServerPage.Size = UDim2.new(1, -10, 1, -70)
-ServerPage.Position = UDim2.new(0, 5, 0, 68)
+ServerPage.Size = UDim2.new(1, -20, 1, -90)
+ServerPage.Position = UDim2.new(0, 10, 0, 85)
 ServerPage.BackgroundTransparency = 1
 ServerPage.Visible = false
 ServerPage.Parent = Main
 
+-- Modern Button Creator
+local function CreateButton(parent, text, position, size)
+    local btn = Instance.new("TextButton")
+    btn.Size = size
+    btn.Position = position
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    btn.BorderSizePixel = 0
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btn.TextSize = 10
+    btn.Font = Enum.Font.GothamBold
+    btn.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(50, 50, 55)
+    stroke.Thickness = 1
+    stroke.Parent = btn
+
+    return btn, stroke
+end
+
+local function toggleButtonVisual(btn, stroke, state)
+    if state then
+        btn.BackgroundColor3 = Color3.fromRGB(40, 80, 50)
+        stroke.Color = Color3.fromRGB(50, 200, 100)
+        btn.TextColor3 = Color3.fromRGB(100, 255, 150)
+    else
+        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+        stroke.Color = Color3.fromRGB(50, 50, 55)
+        btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    end
+end
+
 --------------------------------------------------
 -- MAIN PAGE BUTTONS
 --------------------------------------------------
-local AutoRunButton = CreateButton(MainPage, "AUTO RUN     OFF", UDim2.new(0, 5, 0, 5), UDim2.new(1, -10, 0, 26))
-local ESPButton = CreateButton(MainPage, "ESP     OFF", UDim2.new(0, 5, 0, 40), UDim2.new(1, -10, 0, 26))
-local PetsEspButton = CreateButton(MainPage, "PETS ESP     OFF", UDim2.new(0, 5, 0, 75), UDim2.new(1, -10, 0, 26))
--- Кнопка открытия меню фильтров
-local PetFilterButton = CreateButton(MainPage, "FILTER", UDim2.new(0, 90, 0, 75), UDim2.new(0, 70, 0, 26))
+local AutoRunButton, AutoRunStroke = CreateButton(MainPage, "Auto Run", UDim2.new(0, 0, 0, 10), UDim2.new(1, 0, 0, 35))
+local ESPButton, ESPStroke = CreateButton(MainPage, "Player ESP", UDim2.new(0, 0, 0, 55), UDim2.new(1, 0, 0, 35))
+local PetsEspButton, PetsEspStroke = CreateButton(MainPage, "Pets ESP", UDim2.new(0, 0, 0, 100), UDim2.new(1, 0, 0, 35))
+local PetFilterButton, PetFilterStroke = CreateButton(MainPage, "Pet Filter", UDim2.new(0, 0, 0, 145), UDim2.new(1, 0, 0, 35))
+local AntiFallButton, AntiFallStroke = CreateButton(MainPage, "Anti Fall", UDim2.new(0, 0, 0, 190), UDim2.new(1, 0, 0, 35))
+local AntiAfkButton, AntiAfkStroke = CreateButton(MainPage, "Anti AFK", UDim2.new(0, 0, 0, 235), UDim2.new(1, 0, 0, 35))
+local BypassButton, BypassStroke = CreateButton(MainPage, "BYPASS MENU", UDim2.new(0, 0, 1, -40), UDim2.new(1, 0, 0, 35))
 
--- Меню фильтров
+AutoRunButton.MouseButton1Click:Connect(function()
+    autoRun = not autoRun
+    toggleButtonVisual(AutoRunButton, AutoRunStroke, autoRun)
+    notify("Auto Run", autoRun and "Enabled" or "Disabled")
+end)
+
+ESPButton.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    toggleButtonVisual(ESPButton, ESPStroke, espEnabled)
+    notify("Player ESP", espEnabled and "Enabled" or "Disabled")
+    updateESP()
+end)
+
+PetsEspButton.MouseButton1Click:Connect(function()
+    petsEspEnabled = not petsEspEnabled
+    toggleButtonVisual(PetsEspButton, PetsEspStroke, petsEspEnabled)
+    notify("Pets ESP", petsEspEnabled and "Enabled" or "Disabled")
+    if not petsEspEnabled then
+        for pet, _ in pairs(espTracker) do
+            removePetESP(pet)
+        end
+    end
+end)
+
+AntiFallButton.MouseButton1Click:Connect(function()
+    antiFallEnabled = not antiFallEnabled
+    toggleButtonVisual(AntiFallButton, AntiFallStroke, antiFallEnabled)
+    notify("Anti Fall", antiFallEnabled and "Enabled" or "Disabled")
+    if antiFallEnabled then
+        AntiFall = CreateAntiFall()
+    else
+        RemoveAntiFall()
+    end
+end)
+
+AntiAfkButton.MouseButton1Click:Connect(function()
+    antiAfkEnabled = not antiAfkEnabled
+    toggleButtonVisual(AntiAfkButton, AntiAfkStroke, antiAfkEnabled)
+    notify("Anti AFK", antiAfkEnabled and "Enabled" or "Disabled")
+    if antiAfkEnabled then startAntiAfk() else stopAntiAfk() end
+end)
+
+-- Pet Filter Menu
 local PetFilterMenu = Instance.new("Frame")
-PetFilterMenu.Size = UDim2.new(0, 260, 0, 120)
-PetFilterMenu.Position = UDim2.new(0.5, -130, 0.5, -60)
-PetFilterMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+PetFilterMenu.Size = UDim2.new(0, 260, 0, 140)
+PetFilterMenu.Position = UDim2.new(0.5, -130, 0.5, -70)
+PetFilterMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 PetFilterMenu.BorderSizePixel = 0
 PetFilterMenu.Visible = false
 PetFilterMenu.Active = true
@@ -939,41 +1041,45 @@ local PetFilterCorner = Instance.new("UICorner")
 PetFilterCorner.CornerRadius = UDim.new(0, 8)
 PetFilterCorner.Parent = PetFilterMenu
 
+local PetFilterStroke = Instance.new("UIStroke")
+PetFilterStroke.Color = Color3.fromRGB(50, 50, 55)
+PetFilterStroke.Thickness = 1.5
+PetFilterStroke.Parent = PetFilterMenu
+
 local PetFilterTitle = Instance.new("TextLabel")
-PetFilterTitle.Size = UDim2.new(1, -10, 0, 22)
-PetFilterTitle.Position = UDim2.new(0, 5, 0, 3)
+PetFilterTitle.Size = UDim2.new(1, -10, 0, 25)
+PetFilterTitle.Position = UDim2.new(0, 10, 0, 5)
 PetFilterTitle.BackgroundTransparency = 1
 PetFilterTitle.Text = "PET FILTERS"
-PetFilterTitle.TextColor3 = Color3.fromRGB(235, 235, 240)
-PetFilterTitle.TextSize = 10
+PetFilterTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+PetFilterTitle.TextSize = 12
 PetFilterTitle.Font = Enum.Font.GothamBold
 PetFilterTitle.TextXAlignment = Enum.TextXAlignment.Left
 PetFilterTitle.ZIndex = 21
 PetFilterTitle.Parent = PetFilterMenu
 
--- Поле имени
-local nameLabel = Instance.new("TextLabel")
-nameLabel.Size = UDim2.new(0.4, 0, 0, 20)
-nameLabel.Position = UDim2.new(0, 5, 0, 30)
-nameLabel.BackgroundTransparency = 1
-nameLabel.Text = "Name:"
-nameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-nameLabel.TextSize = 9
-nameLabel.Font = Enum.Font.Gotham
-nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-nameLabel.ZIndex = 21
-nameLabel.Parent = PetFilterMenu
+local filterNameLbl = Instance.new("TextLabel")
+filterNameLbl.Size = UDim2.new(0.4,0, 0,20)
+filterNameLbl.Position = UDim2.new(0, 10, 0, 40)
+filterNameLbl.BackgroundTransparency = 1
+filterNameLbl.Text = "Name:"
+filterNameLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+filterNameLbl.TextSize = 11
+filterNameLbl.Font = Enum.Font.Gotham
+filterNameLbl.TextXAlignment = Enum.TextXAlignment.Left
+filterNameLbl.ZIndex = 21
+filterNameLbl.Parent = PetFilterMenu
 
 local nameBox = Instance.new("TextBox")
-nameBox.Size = UDim2.new(0.55, 0, 0, 20)
-nameBox.Position = UDim2.new(0.4, 0, 0, 30)
-nameBox.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+nameBox.Size = UDim2.new(0.55,0, 0,25)
+nameBox.Position = UDim2.new(0.4, 0, 0, 37)
+nameBox.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
 nameBox.BorderSizePixel = 0
 nameBox.Text = ""
 nameBox.PlaceholderText = "e.g. Dragon"
 nameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 nameBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-nameBox.TextSize = 9
+nameBox.TextSize = 11
 nameBox.Font = Enum.Font.Gotham
 nameBox.ZIndex = 21
 nameBox.Parent = PetFilterMenu
@@ -982,27 +1088,26 @@ local nameBoxCorner = Instance.new("UICorner")
 nameBoxCorner.CornerRadius = UDim.new(0, 4)
 nameBoxCorner.Parent = nameBox
 
--- Поле MPS
-local mpsLabel = Instance.new("TextLabel")
-mpsLabel.Size = UDim2.new(0.4, 0, 0, 20)
-mpsLabel.Position = UDim2.new(0, 5, 0, 55)
-mpsLabel.BackgroundTransparency = 1
-mpsLabel.Text = "Min MPS:"
-mpsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-mpsLabel.TextSize = 9
-mpsLabel.Font = Enum.Font.Gotham
-mpsLabel.TextXAlignment = Enum.TextXAlignment.Left
-mpsLabel.ZIndex = 21
-mpsLabel.Parent = PetFilterMenu
+local filterMpsLbl = Instance.new("TextLabel")
+filterMpsLbl.Size = UDim2.new(0.4,0, 0,20)
+filterMpsLbl.Position = UDim2.new(0, 10, 0, 75)
+filterMpsLbl.BackgroundTransparency = 1
+filterMpsLbl.Text = "Min MPS:"
+filterMpsLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+filterMpsLbl.TextSize = 11
+filterMpsLbl.Font = Enum.Font.Gotham
+filterMpsLbl.TextXAlignment = Enum.TextXAlignment.Left
+filterMpsLbl.ZIndex = 21
+filterMpsLbl.Parent = PetFilterMenu
 
 local mpsBox = Instance.new("TextBox")
-mpsBox.Size = UDim2.new(0.55, 0, 0, 20)
-mpsBox.Position = UDim2.new(0.4, 0, 0, 55)
-mpsBox.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+mpsBox.Size = UDim2.new(0.55,0, 0,25)
+mpsBox.Position = UDim2.new(0.4, 0, 0, 72)
+mpsBox.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
 mpsBox.BorderSizePixel = 0
 mpsBox.Text = "0"
 mpsBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-mpsBox.TextSize = 9
+mpsBox.TextSize = 11
 mpsBox.Font = Enum.Font.Gotham
 mpsBox.ZIndex = 21
 mpsBox.Parent = PetFilterMenu
@@ -1011,13 +1116,8 @@ local mpsBoxCorner = Instance.new("UICorner")
 mpsBoxCorner.CornerRadius = UDim.new(0, 4)
 mpsBoxCorner.Parent = mpsBox
 
--- Кнопка Apply
-local applyBtn = CreateButton(PetFilterMenu, "APPLY", UDim2.new(0.2, 5, 0, 85), UDim2.new(0.6, -10, 0, 25))
+local applyBtn, applyStroke = CreateButton(PetFilterMenu, "APPLY", UDim2.new(0.1, 5, 0, 110), UDim2.new(0.8, -10, 0, 25))
 applyBtn.ZIndex = 21
-
--- Кнопка Clear
-local clearBtn = CreateButton(PetFilterMenu, "CLEAR", UDim2.new(0.8, 0, 0, 85), UDim2.new(0.2, -5, 0, 25))
-clearBtn.ZIndex = 21
 
 PetFilterButton.MouseButton1Click:Connect(function()
     PetFilterMenu.Visible = not PetFilterMenu.Visible
@@ -1025,96 +1125,35 @@ end)
 
 applyBtn.MouseButton1Click:Connect(function()
     petFilterName = nameBox.Text
-    
-    -- Парсим ввод MPS (понимает 1m, 1000000, 1.5M)
     local inputText = mpsBox.Text:lower()
     local mult = 1
     if inputText:find("k") then mult = 1000
     elseif inputText:find("m") then mult = 1000000
     elseif inputText:find("b") then mult = 1000000000 end
-    
     local numStr = inputText:gsub("[^%d%.]", "")
     local val = tonumber(numStr)
-    
-    if val then
-        petFilterMPS = val * mult
-    else
-        petFilterMPS = 0
-    end
-    
+    if val then petFilterMPS = val * mult else petFilterMPS = 0 end
     PetFilterMenu.Visible = false
-end)
-
-clearBtn.MouseButton1Click:Connect(function()
-    nameBox.Text = ""
-    mpsBox.Text = "0"
-    petFilterName = ""
-    petFilterMPS = 0
-end)
-
-local AntiFallButton = CreateButton(MainPage, "ANTI FALL     OFF", UDim2.new(0, 5, 0, 110), UDim2.new(1, -10, 0, 26))
-local AntiCheatButton = CreateButton(MainPage, "ANTI ANTI-CHEAT     OFF", UDim2.new(0, 5, 0, 145), UDim2.new(1, -10, 0, 26))
-local AntiAfkButton = CreateButton(MainPage, "ANTI AFK     OFF", UDim2.new(0, 5, 0, 180), UDim2.new(1, -10, 0, 26))
-local BypassButton = CreateButton(MainPage, "BYPASS", UDim2.new(0, 5, 1, -35), UDim2.new(0, 80, 0, 28))
-
-AutoRunButton.MouseButton1Click:Connect(function()
-    autoRun = not autoRun
-    AutoRunButton.Text = "AUTO RUN     " .. (autoRun and "ON" or "OFF")
-end)
-
-ESPButton.MouseButton1Click:Connect(function()
-    espEnabled = not espEnabled
-    ESPButton.Text = "ESP     " .. (espEnabled and "ON" or "OFF")
-    updateESP()
-end)
-
-PetsEspButton.MouseButton1Click:Connect(function()
-    petsEspEnabled = not petsEspEnabled
-    PetsEspButton.Text = "PETS ESP     " .. (petsEspEnabled and "ON" or "OFF")
-    if not petsEspEnabled then
-        for pet, _ in pairs(espTracker) do
-            removePetESP(pet)
-        end
-    end
-end)
-
-AntiFallButton.MouseButton1Click:Connect(function()
-    antiFallEnabled = not antiFallEnabled
-    if antiFallEnabled then
-        AntiFall = CreateAntiFall()
-    else
-        RemoveAntiFall()
-    end
-    AntiFallButton.Text = "ANTI FALL     " .. (antiFallEnabled and "ON" or "OFF")
-end)
-
-AntiCheatButton.MouseButton1Click:Connect(function()
-    antiCheatBypassEnabled = not antiCheatBypassEnabled
-    AntiCheatButton.Text = "ANTI ANTI-CHEAT     " .. (antiCheatBypassEnabled and "ON" or "OFF")
-    if antiCheatBypassEnabled then startAntiCheatBypass() else stopAntiCheatBypass() end
-end)
-
-AntiAfkButton.MouseButton1Click:Connect(function()
-    antiAfkEnabled = not antiAfkEnabled
-    AntiAfkButton.Text = "ANTI AFK     " .. (antiAfkEnabled and "ON" or "OFF")
-    if antiAfkEnabled then startAntiAfk() else stopAntiAfk() end
+    notify("Pet Filter", "Applied successfully")
 end)
 
 --------------------------------------------------
 -- COMBAT PAGE BUTTONS
 --------------------------------------------------
-local AntiKnockbackButton = CreateButton(CombatPage, "ANTI KNOCKBACK     OFF", UDim2.new(0, 5, 0, 5), UDim2.new(1, -10, 0, 26))
-local AutoLockButton = CreateButton(CombatPage, "AUTO LOCK     OFF", UDim2.new(0, 5, 0, 40), UDim2.new(1, -10, 0, 26))
+local AntiKnockbackButton, AntiKbStroke = CreateButton(CombatPage, "Anti Knockback", UDim2.new(0, 0, 0, 10), UDim2.new(1, 0, 0, 35))
+local AutoLockButton, AutoLockStroke = CreateButton(CombatPage, "Auto Lock Base", UDim2.new(0, 0, 0, 55), UDim2.new(1, 0, 0, 35))
 
 AntiKnockbackButton.MouseButton1Click:Connect(function()
     antiKnockbackEnabled = not antiKnockbackEnabled
-    AntiKnockbackButton.Text = "ANTI KNOCKBACK     " .. (antiKnockbackEnabled and "ON" or "OFF")
+    toggleButtonVisual(AntiKnockbackButton, AntiKbStroke, antiKnockbackEnabled)
+    notify("Anti Knockback", antiKnockbackEnabled and "Enabled" or "Disabled")
     if antiKnockbackEnabled then startAntiKnockback() else stopAntiKnockback() end
 end)
 
 AutoLockButton.MouseButton1Click:Connect(function()
     autoLockEnabled = not autoLockEnabled
-    AutoLockButton.Text = "AUTO LOCK     " .. (autoLockEnabled and "ON" or "OFF")
+    toggleButtonVisual(AutoLockButton, AutoLockStroke, autoLockEnabled)
+    notify("Auto Lock", autoLockEnabled and "Enabled" or "Disabled")
     if autoLockEnabled then startAutoLock() else stopAutoLock() end
 end)
 
@@ -1124,7 +1163,7 @@ end)
 local BypassMenu = Instance.new("Frame")
 BypassMenu.Size = UDim2.new(0, 150, 0, 125)
 BypassMenu.Position = UDim2.new(0.5, 20, 0.5, -60)
-BypassMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+BypassMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 BypassMenu.BorderSizePixel = 0
 BypassMenu.Visible = false
 BypassMenu.Active = true
@@ -1137,25 +1176,30 @@ local BypassCorner = Instance.new("UICorner")
 BypassCorner.CornerRadius = UDim.new(0, 8)
 BypassCorner.Parent = BypassMenu
 
+local BypassStroke = Instance.new("UIStroke")
+BypassStroke.Color = Color3.fromRGB(50, 50, 55)
+BypassStroke.Thickness = 1.5
+BypassStroke.Parent = BypassMenu
+
 local BypassTitle = Instance.new("TextLabel")
 BypassTitle.Size = UDim2.new(1, -10, 0, 22)
-BypassTitle.Position = UDim2.new(0, 5, 0, 3)
+BypassTitle.Position = UDim2.new(0, 5, 0, 5)
 BypassTitle.BackgroundTransparency = 1
 BypassTitle.Text = "BYPASS"
-BypassTitle.TextColor3 = Color3.fromRGB(235, 235, 240)
-BypassTitle.TextSize = 10
+BypassTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+BypassTitle.TextSize = 12
 BypassTitle.Font = Enum.Font.GothamBold
 BypassTitle.TextXAlignment = Enum.TextXAlignment.Left
 BypassTitle.ZIndex = 21
 BypassTitle.Parent = BypassMenu
 
-local WallHopButton = CreateButton(BypassMenu, "WALL HOP     OFF", UDim2.new(0, 5, 0, 28), UDim2.new(1, -10, 0, 27))
+local WallHopButton, WallHopStroke = CreateButton(BypassMenu, "Wall Hop", UDim2.new(0.1, 5, 0, 35), UDim2.new(0.8, -10, 0, 25))
 WallHopButton.ZIndex = 21
 
-local EnterBase = CreateButton(BypassMenu, "ENTER BASE", UDim2.new(0, 5, 0, 60), UDim2.new(1, -10, 0, 27))
+local EnterBase, EnterBaseStroke = CreateButton(BypassMenu, "Enter Base", UDim2.new(0.1, 5, 0, 65), UDim2.new(0.8, -10, 0, 25))
 EnterBase.ZIndex = 21
 
-local ExitBase = CreateButton(BypassMenu, "EXIT BASE", UDim2.new(0, 5, 0, 92), UDim2.new(1, -10, 0, 27))
+local ExitBase, ExitBaseStroke = CreateButton(BypassMenu, "Exit Base", UDim2.new(0.1, 5, 0, 95), UDim2.new(0.8, -10, 0, 25))
 ExitBase.ZIndex = 21
 
 BypassButton.MouseButton1Click:Connect(function()
@@ -1164,100 +1208,51 @@ end)
 
 WallHopButton.MouseButton1Click:Connect(function()
     wallHopEnabled = not wallHopEnabled
-    WallHopButton.Text = "WALL HOP     " .. (wallHopEnabled and "ON" or "OFF")
+    toggleButtonVisual(WallHopButton, WallHopStroke, wallHopEnabled)
+    notify("Wall Hop", wallHopEnabled and "Enabled" or "Disabled")
 end)
-
---------------------------------------------------
--- ENTER / EXIT BASE (CFRAME + NO COLLIDE)
---------------------------------------------------
-local baseDebounce = false
-
-local function smoothVerticalMove(distance, direction)
-    if not rootPart or baseDebounce then return end
-    baseDebounce = true
-
-    local startPos = rootPart.Position
-    local targetY = startPos.Y + (distance * direction)
-    
-    task.spawn(function()
-        -- Отключаем коллизию чтобы не застрять в блоках
-        local originalCollide = rootPart.CanCollide
-        pcall(function() rootPart.CanCollide = false end)
-        
-        -- Микро-шаги через CFrame (быстро и плавно)
-        local steps = math.abs(distance) * 4 -- 0.25 стада за шаг
-        local stepSize = (distance / steps) * direction
-        
-        for i = 1, steps do
-            if not rootPart then break end
-            rootPart.CFrame = rootPart.CFrame + Vector3.new(0, stepSize, 0)
-            task.wait(0.005) -- Очень быстро
-        end
-        
-        -- Точная финальная позиция
-        if rootPart then
-            rootPart.CFrame = CFrame.new(
-                rootPart.Position.X,
-                targetY,
-                rootPart.Position.Z
-            ) * CFrame.Angles(0, math.rad(rootPart.Orientation.Y), 0)
-            
-            -- Возвращаем коллизию
-            pcall(function() rootPart.CanCollide = originalCollide end)
-        end
-        
-        -- Минимальный кулдаун чтобы не спамить
-        task.wait(0.2)
-        baseDebounce = false
-    end)
-end
 
 EnterBase.MouseButton1Click:Connect(function()
     smoothVerticalMove(DOWN_DISTANCE, -1)
+    notify("Enter Base", "Moving down")
 end)
 
 ExitBase.MouseButton1Click:Connect(function()
     smoothVerticalMove(UP_DISTANCE, 1)
+    notify("Exit Base", "Moving up")
 end)
+
 --------------------------------------------------
 -- SERVER PAGE
 --------------------------------------------------
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -10, 0, 16)
-Status.Position = UDim2.new(0, 5, 0, 3)
+Status.Size = UDim2.new(1, 0, 0, 20)
+Status.Position = UDim2.new(0, 0, 0, 10)
 Status.BackgroundTransparency = 1
-Status.Text = "Saved Job ID: " .. #SavedJobs
-Status.TextColor3 = Color3.fromRGB(150, 150, 160)
-Status.TextSize = 8
-Status.Font = Enum.Font.Gotham
+Status.Text = "Saved Jobs: " .. #SavedJobs
+Status.TextColor3 = Color3.fromRGB(200, 200, 200)
+Status.TextSize = 11
+Status.Font = Enum.Font.GothamBold
 Status.TextXAlignment = Enum.TextXAlignment.Left
 Status.Parent = ServerPage
 
-local BusyButton = CreateButton(ServerPage, "JOIN RAMAI", UDim2.new(0, 5, 0, 25), UDim2.new(0.5, -8, 0, 27))
-local EmptyButton = CreateButton(ServerPage, "JOIN SEPI", UDim2.new(0.5, 3, 0, 25), UDim2.new(0.5, -8, 0, 27))
-local CopyButton = CreateButton(ServerPage, "COPY & SAVE", UDim2.new(0, 5, 0, 57), UDim2.new(0.58, -7, 0, 27))
-local ReconnectButton = CreateButton(ServerPage, "RECONNECT", UDim2.new(0.58, 2, 0, 57), UDim2.new(0.42, -7, 0, 27))
+local BusyButton, BusyStroke = CreateButton(ServerPage, "Join Busy", UDim2.new(0, 0, 0, 40), UDim2.new(0.5, -5, 0, 30))
+local EmptyButton, EmptyStroke = CreateButton(ServerPage, "Join Empty", UDim2.new(0.5, 5, 0, 40), UDim2.new(0.5, -5, 0, 30))
+local CopyButton, CopyStroke = CreateButton(ServerPage, "Copy & Save", UDim2.new(0, 0, 0, 80), UDim2.new(0.5, -5, 0, 30))
+local ReconnectButton, ReconnectStroke = CreateButton(ServerPage, "Reconnect", UDim2.new(0.5, 5, 0, 80), UDim2.new(0.5, -5, 0, 30))
 
 local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -10, 0, 145)
-Scroll.Position = UDim2.new(0, 5, 0, 90)
+Scroll.Size = UDim2.new(1, 0, 1, -120)
+Scroll.Position = UDim2.new(0, 0, 0, 120)
 Scroll.BackgroundTransparency = 1
 Scroll.BorderSizePixel = 0
 Scroll.ScrollBarThickness = 2
-Scroll.ScrollingDirection = Enum.ScrollingDirection.Y
 Scroll.Parent = ServerPage
 
 local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0, 4)
+Layout.Padding = UDim.new(0, 5)
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
 Layout.Parent = Scroll
-
-local Padding = Instance.new("UIPadding")
-Padding.PaddingTop = UDim.new(0, 3)
-Padding.PaddingBottom = UDim.new(0, 3)
-Padding.PaddingLeft = UDim.new(0, 3)
-Padding.PaddingRight = UDim.new(0, 3)
-Padding.Parent = Scroll
 
 local function UpdateList()
     for _, child in ipairs(Scroll:GetChildren()) do
@@ -1268,39 +1263,60 @@ local function UpdateList()
 
     for index, Data in ipairs(SavedJobs) do
         local Row = Instance.new("Frame")
-        Row.Size = UDim2.new(1, -6, 0, 30)
-        Row.BackgroundColor3 = Color3.fromRGB(38, 38, 45)
+        Row.Size = UDim2.new(1, -4, 0, 35)
+        Row.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
         Row.BorderSizePixel = 0
         Row.Parent = Scroll
 
         local RowCorner = Instance.new("UICorner")
-        RowCorner.CornerRadius = UDim.new(0, 7)
+        RowCorner.CornerRadius = UDim.new(0, 6)
         RowCorner.Parent = Row
 
         local JobText = Instance.new("TextLabel")
-        JobText.Size = UDim2.new(1, -145, 1, 0)
-        JobText.Position = UDim2.new(0, 8, 0, 0)
+        JobText.Size = UDim2.new(1, -120, 1, 0)
+        JobText.Position = UDim2.new(0, 10, 0, 0)
         JobText.BackgroundTransparency = 1
         JobText.Text = Data.Name or ("Server " .. index)
-        JobText.TextColor3 = Color3.fromRGB(220, 220, 225)
-        JobText.TextSize = 8
+        JobText.TextColor3 = Color3.fromRGB(220, 220, 220)
+        JobText.TextSize = 10
         JobText.Font = Enum.Font.Gotham
         JobText.TextXAlignment = Enum.TextXAlignment.Left
         JobText.Parent = Row
 
-        local Join = CreateButton(Row, "JOIN", UDim2.new(1, -130, 0.5, -10), UDim2.new(0, 38, 0, 20))
+        local Join = Instance.new("TextButton")
+        Join.Size = UDim2.new(0, 50, 1, -10)
+        Join.Position = UDim2.new(1, -110, 0, 5)
+        Join.BackgroundColor3 = Color3.fromRGB(40, 80, 50)
+        Join.BorderSizePixel = 0
+        Join.Text = "JOIN"
+        Join.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Join.TextSize = 9
+        Join.Font = Enum.Font.GothamBold
+        Join.Parent = Row
+
+        local JoinCorner = Instance.new("UICorner")
+        JoinCorner.CornerRadius = UDim.new(0, 4)
+        JoinCorner.Parent = Join
+
         Join.MouseButton1Click:Connect(function()
             TeleportService:TeleportToPlaceInstance(PlaceId, Data.JobId, LocalPlayer)
         end)
 
-        local Rename = CreateButton(Row, "RENAME", UDim2.new(1, -88, 0.5, -10), UDim2.new(0, 52, 0, 20))
-        Rename.MouseButton1Click:Connect(function()
-            Data.Name = "Server " .. index
-            SaveJobs()
-            UpdateList()
-        end)
+        local Delete = Instance.new("TextButton")
+        Delete.Size = UDim2.new(0, 40, 1, -10)
+        Delete.Position = UDim2.new(1, -55, 0, 5)
+        Delete.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+        Delete.BorderSizePixel = 0
+        Delete.Text = "X"
+        Delete.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Delete.TextSize = 9
+        Delete.Font = Enum.Font.GothamBold
+        Delete.Parent = Row
 
-        local Delete = CreateButton(Row, "X", UDim2.new(1, -30, 0.5, -10), UDim2.new(0, 22, 0, 20))
+        local DelCorner = Instance.new("UICorner")
+        DelCorner.CornerRadius = UDim.new(0, 4)
+        DelCorner.Parent = Delete
+
         Delete.MouseButton1Click:Connect(function()
             table.remove(SavedJobs, index)
             SaveJobs()
@@ -1308,20 +1324,20 @@ local function UpdateList()
         end)
     end
 
-    Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 6)
-    Status.Text = "Saved Job ID: " .. #SavedJobs
+    Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 10)
+    Status.Text = "Saved Jobs: " .. #SavedJobs
 end
 
 CopyButton.MouseButton1Click:Connect(function()
     local CurrentJobId = game.JobId
-    if #SavedJobs >= 3 then
-        Status.Text = "Maksimal 3 Job ID!"
+    if #SavedJobs >= 10 then
+        notify("Server Hop", "Max 10 saved jobs!")
         return
     end
 
     for _, Data in ipairs(SavedJobs) do
         if Data.JobId == CurrentJobId then
-            Status.Text = "Job ID sudah ada!"
+            notify("Server Hop", "Already saved!")
             return
         end
     end
@@ -1334,11 +1350,9 @@ CopyButton.MouseButton1Click:Connect(function()
 
     if setclipboard then
         setclipboard(CurrentJobId)
-    elseif toclipboard then
-        toclipboard(CurrentJobId)
     end
 
-    Status.Text = "Job ID berhasil disimpan!"
+    notify("Server Hop", "Saved & Copied!")
     UpdateList()
 end)
 
@@ -1346,9 +1360,6 @@ ReconnectButton.MouseButton1Click:Connect(function()
     TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId, LocalPlayer)
 end)
 
---------------------------------------------------
--- SERVER HOP
---------------------------------------------------
 local ServerSearching = false
 
 local function GetServers()
@@ -1391,7 +1402,7 @@ local function FindServer(Mode)
     local BestServer = nil
 
     for Attempt = 1, 5 do
-        Status.Text = "Scan server " .. Attempt .. "/5..."
+        Status.Text = "Scan " .. Attempt .. "/5..."
         local Servers = GetServers()
 
         for _, Server in ipairs(Servers) do
@@ -1417,15 +1428,16 @@ end
 BusyButton.MouseButton1Click:Connect(function()
     if ServerSearching then return end
     ServerSearching = true
-    Status.Text = "Mencari server ramai..."
+    Status.Text = "Searching busy..."
 
     local Server = FindServer("BUSY")
     if Server then
-        Status.Text = "Join server ramai: " .. Server.playing .. "/" .. Server.maxPlayers
+        Status.Text = "Joining: " .. Server.playing .. "/" .. Server.maxPlayers
         task.wait(0.5)
         TeleportService:TeleportToPlaceInstance(PlaceId, Server.id, LocalPlayer)
     else
-        Status.Text = "Server ramai tidak ditemukan!"
+        Status.Text = "Not found!"
+        notify("Server Hop", "No busy servers found")
     end
     ServerSearching = false
 end)
@@ -1433,15 +1445,16 @@ end)
 EmptyButton.MouseButton1Click:Connect(function()
     if ServerSearching then return end
     ServerSearching = true
-    Status.Text = "Mencari server sepi..."
+    Status.Text = "Searching empty..."
 
     local Server = FindServer("EMPTY")
     if Server then
-        Status.Text = "Join server sepi: " .. Server.playing .. "/" .. Server.maxPlayers
+        Status.Text = "Joining: " .. Server.playing .. "/" .. Server.maxPlayers
         task.wait(0.5)
         TeleportService:TeleportToPlaceInstance(PlaceId, Server.id, LocalPlayer)
     else
-        Status.Text = "Server sepi tidak ditemukan!"
+        Status.Text = "Not found!"
+        notify("Server Hop", "No empty servers found")
     end
     ServerSearching = false
 end)
@@ -1449,54 +1462,51 @@ end)
 --------------------------------------------------
 -- TAB SWITCHING
 --------------------------------------------------
-MainTab.MouseButton1Click:Connect(function()
-    MainPage.Visible = true
-    CombatPage.Visible = false
-    ServerPage.Visible = false
-    MainTab.BackgroundColor3 = Color3.fromRGB(65, 95, 145)
-    CombatTab.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    ServerTab.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-end)
-
-CombatTab.MouseButton1Click:Connect(function()
-    MainPage.Visible = false
-    CombatPage.Visible = true
-    ServerPage.Visible = false
-    CombatTab.BackgroundColor3 = Color3.fromRGB(65, 95, 145)
-    MainTab.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    ServerTab.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-end)
-
-ServerTab.MouseButton1Click:Connect(function()
+local function switchTab(tab, page)
     MainPage.Visible = false
     CombatPage.Visible = false
-    ServerPage.Visible = true
-    ServerTab.BackgroundColor3 = Color3.fromRGB(65, 95, 145)
-    MainTab.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    CombatTab.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-end)
+    ServerPage.Visible = false
+    
+    MainTab.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    CombatTab.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    ServerTab.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    
+    MainTab.TextColor3 = Color3.fromRGB(180, 180, 180)
+    CombatTab.TextColor3 = Color3.fromRGB(180, 180, 180)
+    ServerTab.TextColor3 = Color3.fromRGB(180, 180, 180)
+    
+    page.Visible = true
+    tab.BackgroundColor3 = Color3.fromRGB(45, 75, 120)
+    tab.TextColor3 = Color3.fromRGB(255, 255, 255)
+end
+
+MainTab.MouseButton1Click:Connect(function() switchTab(MainTab, MainPage) end)
+CombatTab.MouseButton1Click:Connect(function() switchTab(CombatTab, CombatPage) end)
+ServerTab.MouseButton1Click:Connect(function() switchTab(ServerTab, ServerPage) end)
 
 --------------------------------------------------
 -- HIDE / SHOW
 --------------------------------------------------
 local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 42, 0, 42)
-ToggleButton.Position = UDim2.new(0, 15, 0.5, -21)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+ToggleButton.Size = UDim2.new(0, 50, 0, 50)
+ToggleButton.Position = UDim2.new(0, 20, 0.5, -25)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 ToggleButton.BorderSizePixel = 0
-ToggleButton.Text = "LH"
+ToggleButton.Text = "SSS"
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.TextSize = 10
+ToggleButton.TextSize = 12
 ToggleButton.Font = Enum.Font.GothamBold
 ToggleButton.Visible = false
-ToggleButton.Active = true
 ToggleButton.Parent = ScreenGui
 
-MakeDraggable(ToggleButton)
-
 local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(0, 9)
+ToggleCorner.CornerRadius = UDim.new(0, 10)
 ToggleCorner.Parent = ToggleButton
+
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = Color3.fromRGB(50, 50, 55)
+ToggleStroke.Thickness = 1.5
+ToggleStroke.Parent = ToggleButton
 
 HideButton.MouseButton1Click:Connect(function()
     Main.Visible = false
@@ -1511,5 +1521,5 @@ end)
 --------------------------------------------------
 -- START
 --------------------------------------------------
-MainTab.BackgroundColor3 = Color3.fromRGB(65, 95, 145)
+switchTab(MainTab, MainPage)
 UpdateList()
