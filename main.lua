@@ -77,6 +77,11 @@ local autoLockConnection
 local antiAfkConnection
 local antiCheatConnection
 
+local LOCK_STATE_ATTR = "LockState"
+local STATE_IDLE = "Idle"
+local STATE_LOCKED = "Locked"
+local STATE_COOLDOWN = "Cooldown"
+
 --------------------------------------------------
 -- CHARACTER
 --------------------------------------------------
@@ -217,7 +222,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (INTEGRATED FROM EXTERNAL SCRIPT)
+-- PETS ESP (LOW OFFSET - над головой питомца)
 --------------------------------------------------
 local espTracker = {}
 
@@ -297,11 +302,12 @@ local function createPetESP(pet)
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "PetESP"
     billboard.Adornee = adornPart
-    billboard.Size = UDim2.new(0, 250, 0, 80)
+    billboard.Size = UDim2.new(0, 200, 0, 70)
     billboard.AlwaysOnTop = true
     billboard.LightInfluence = 0
     billboard.MaxDistance = 0
-    billboard.ExtentsOffset = Vector3.new(0, 120, 0)
+    -- ОПУСТИЛИ: было 120, стало 4 — прямо над головой питомца
+    billboard.ExtentsOffset = Vector3.new(0, 4, 0)
     billboard.Parent = pet
     
     local bg = Instance.new("Frame")
@@ -330,7 +336,7 @@ local function createPetESP(pet)
     
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PetName"
-    nameLabel.Size = UDim2.new(1, -8, 0, 22)
+    nameLabel.Size = UDim2.new(1, -8, 0, 20)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = getPetName(pet)
     nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -340,7 +346,7 @@ local function createPetESP(pet)
     
     local levelLabel = Instance.new("TextLabel")
     levelLabel.Name = "Level"
-    levelLabel.Size = UDim2.new(1, -8, 0, 18)
+    levelLabel.Size = UDim2.new(1, -8, 0, 16)
     levelLabel.BackgroundTransparency = 1
     levelLabel.Text = getPetLevel(pet)
     levelLabel.TextColor3 = Color3.fromRGB(180, 180, 255)
@@ -350,7 +356,7 @@ local function createPetESP(pet)
     
     local mpsLabel = Instance.new("TextLabel")
     mpsLabel.Name = "MPS"
-    mpsLabel.Size = UDim2.new(1, -8, 0, 18)
+    mpsLabel.Size = UDim2.new(1, -8, 0, 16)
     mpsLabel.BackgroundTransparency = 1
     mpsLabel.Text = getPetMPS(pet)
     mpsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
@@ -360,7 +366,7 @@ local function createPetESP(pet)
     
     local mutLabel = Instance.new("TextLabel")
     mutLabel.Name = "Mutation"
-    mutLabel.Size = UDim2.new(1, -8, 0, 18)
+    mutLabel.Size = UDim2.new(1, -8, 0, 16)
     mutLabel.BackgroundTransparency = 1
     mutLabel.Text = ""
     mutLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
@@ -371,7 +377,7 @@ local function createPetESP(pet)
     
     local ownerLabel = Instance.new("TextLabel")
     ownerLabel.Name = "Owner"
-    ownerLabel.Size = UDim2.new(1, -8, 0, 14)
+    ownerLabel.Size = UDim2.new(1, -8, 0, 12)
     ownerLabel.BackgroundTransparency = 1
     ownerLabel.Text = "Owner: " .. getOwnerName(pet)
     ownerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -486,11 +492,12 @@ task.spawn(function()
 end)
 
 --------------------------------------------------
--- ANTI KNOCKBACK (ADVANCED)
+-- ANTI KNOCKBACK (AGGRESSIVE)
 --------------------------------------------------
-local VELOCITY_THRESHOLD = 55
-local UPWARD_THRESHOLD = 55
-local MAX_COUNTER_DURATION = 1.5
+-- Порог снижен с 55 до 30 — бита отбрасывает на 40-50
+local VELOCITY_THRESHOLD = 30
+local UPWARD_THRESHOLD = 35
+local MAX_COUNTER_DURATION = 2.0
 
 local isCountering = false
 local counterEndTime = 0
@@ -537,22 +544,14 @@ local function startAntiKnockback()
         end
 
         if isCountering and now < counterEndTime then
-            local walkSpeed = humanoid.WalkSpeed
-            local maxSpeed = math.max(walkSpeed * 3, VELOCITY_THRESHOLD)
-
-            local clampedX = currentVel.X
-            local clampedZ = currentVel.Z
+            -- ПОЛНОСТЬЮ гасим горизонтальную velocity (не clamp, а обнул)
+            local clampedX = 0
+            local clampedZ = 0
             local clampedY = currentVel.Y
 
-            local horiz = Vector3.new(clampedX, 0, clampedZ)
-            if horiz.Magnitude > maxSpeed then
-                horiz = horiz.Unit * maxSpeed
-                clampedX = horiz.X
-                clampedZ = horiz.Z
-            end
-
-            if not isJumpVelocity and clampedY > 50 then
-                clampedY = math.min(clampedY, 25)
+            -- Гасим вертикаль если не прыжок
+            if not isJumpVelocity and clampedY > 25 then
+                clampedY = 0
             end
 
             rootPart.AssemblyLinearVelocity = Vector3.new(clampedX, clampedY, clampedZ)
@@ -570,7 +569,7 @@ local function stopAntiKnockback()
 end
 
 --------------------------------------------------
--- AUTO LOCK BASE
+-- AUTO LOCK BASE (БЕЗ 20-минутной блокировки)
 --------------------------------------------------
 local function findMyPlot()
     local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -610,11 +609,13 @@ local function startAutoLock()
             if myPlot and rootPart and humanoid then
                 local lockObj = myPlot:FindFirstChild("Lock")
                 
-                if lockObj then
-                    local currentState = lockObj:GetAttribute("LockState") or "Idle"
+                -- ВАЖНО: игнорируем "Lock 24hr" — трогаем только обычный Lock
+                if lockObj and lockObj.Name == "Lock" then
+                    local currentState = lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
                     local pad = lockObj:FindFirstChild("Pad")
 
-                    if currentState == "Idle" and pad then
+                    if currentState == STATE_IDLE and pad then
+                        -- Трогаем ТОЛЬКО Pad (не Lock 24hr)
                         pcall(function()
                             firetouchinterest(rootPart, pad, 0)
                         end)
@@ -623,7 +624,7 @@ local function startAutoLock()
                             firetouchinterest(rootPart, pad, 1)
                         end)
 
-                    elseif currentState == "Cooldown" then
+                    elseif currentState == STATE_COOLDOWN then
                         if not skipCooldownDebounce then
                             skipCooldownDebounce = true
 
@@ -639,21 +640,13 @@ local function startAutoLock()
                                 end
                             end
 
+                            -- Скип кулдауна через ProximityPrompt на Pad
                             if pad then
                                 local prompt = pad:FindFirstChild("SkipCooldownPrompt")
                                 if prompt and prompt:IsA("ProximityPrompt") then
                                     pcall(function()
                                         fireproximityprompt(prompt)
                                     end)
-                                end
-                            end
-
-                            for _, descendant in ipairs(lockObj:GetDescendants()) do
-                                if descendant:IsA("ProximityPrompt") and descendant.Name:find("Skip") then
-                                    pcall(function()
-                                        fireproximityprompt(descendant)
-                                    end)
-                                    break
                                 end
                             end
 
@@ -735,17 +728,18 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (ORIGINAL STEALTH)
+-- WALL HOP (ПЛАВНЫЙ ПОЛЁТ ВВЕРХ)
 --------------------------------------------------
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
+local activeBodyVel = nil
 
 RunService.Heartbeat:Connect(function()
     if not wallHopEnabled or not rootPart or not humanoid then return end
     if wallHopDebounce then return end
 
     local currentTime = tick()
-    if currentTime - wallHopLastTrigger < 0.3 then return end
+    if currentTime - wallHopLastTrigger < 1.5 then return end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
@@ -766,21 +760,36 @@ RunService.Heartbeat:Connect(function()
             wallHopLastTrigger = currentTime
             isWallHopping = true
 
-            -- Рандомизированная velocity (оригинал был 45, теперь 32-42)
-            local jumpPower = math.random(32, 42)
-            rootPart.AssemblyLinearVelocity = Vector3.new(
-                rootPart.AssemblyLinearVelocity.X,
-                jumpPower,
-                rootPart.AssemblyLinearVelocity.Z
-            )
+            -- Удаляем старый BodyVelocity
+            if activeBodyVel then
+                pcall(function() activeBodyVel:Destroy() end)
+            end
 
-            task.wait(0.25)
-            isWallHopping = false
-            wallHopDebounce = false
+            task.spawn(function()
+                -- Создаём BodyVelocity с НИЗКОЙ скоростью = плавный полёт
+                local bv = Instance.new("BodyVelocity")
+                bv.MaxForce = Vector3.new(0, math.huge, 0)
+                bv.Velocity = Vector3.new(0, 25, 0) -- Скорость 25 (было 60) = плавно
+                bv.Parent = rootPart
+                activeBodyVel = bv
+
+                -- Длительность полёта 1.2 секунды
+                task.wait(1.2)
+
+                if bv then
+                    bv:Destroy()
+                end
+                activeBodyVel = nil
+
+                task.wait(0.3)
+                isWallHopping = false
+                wallHopDebounce = false
+            end)
             break
         end
     end
 end)
+
 --------------------------------------------------
 -- ANTI FALL CIRCLE
 --------------------------------------------------
