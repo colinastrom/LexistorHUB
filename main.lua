@@ -232,7 +232,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (CLEAN - NO BACKGROUND)
+-- PETS ESP (CLEAN - NAME / MPS / MUTATION)
 --------------------------------------------------
 local espTracker = {}
 
@@ -286,7 +286,6 @@ local function createPetESP(pet)
     end
     if not adornPart then return nil end
     
-    -- BillboardGui без фона
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "PetESP"
     billboard.Adornee = adornPart
@@ -304,7 +303,7 @@ local function createPetESP(pet)
     layout.Padding = UDim.new(0, 1)
     layout.Parent = billboard
     
-    -- Только Name (белый, маленький)
+    -- 1. ИМЯ (белый, сверху)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PetName"
     nameLabel.Size = UDim2.new(1, 0, 0, 14)
@@ -312,15 +311,15 @@ local function createPetESP(pet)
     nameLabel.Text = getPetName(pet)
     nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     nameLabel.Font = Enum.Font.GothamBold
-    nameLabel.TextSize = 10
+    nameLabel.TextSize = 11
     nameLabel.Parent = billboard
     
     local nameStroke = Instance.new("UIStroke")
-    nameStroke.Thickness = 1
+    nameStroke.Thickness = 1.5
     nameStroke.Color = Color3.new(0, 0, 0)
     nameStroke.Parent = nameLabel
     
-    -- Только MPS (зелёный, маленький)
+    -- 2. ДОХОД (зелёный, посередине)
     local mpsLabel = Instance.new("TextLabel")
     mpsLabel.Name = "MPS"
     mpsLabel.Size = UDim2.new(1, 0, 0, 13)
@@ -328,15 +327,15 @@ local function createPetESP(pet)
     mpsLabel.Text = getPetMPS(pet)
     mpsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
     mpsLabel.Font = Enum.Font.GothamBold
-    mpsLabel.TextSize = 9
+    mpsLabel.TextSize = 10
     mpsLabel.Parent = billboard
     
     local mpsStroke = Instance.new("UIStroke")
-    mpsStroke.Thickness = 1
+    mpsStroke.Thickness = 1.5
     mpsStroke.Color = Color3.new(0, 0, 0)
     mpsStroke.Parent = mpsLabel
     
-    -- Только Mutation (золотой, маленький, только если есть)
+    -- 3. МУТАЦИЯ (золотой, снизу, только если есть)
     local mutLabel = Instance.new("TextLabel")
     mutLabel.Name = "Mutation"
     mutLabel.Size = UDim2.new(1, 0, 0, 13)
@@ -344,12 +343,12 @@ local function createPetESP(pet)
     mutLabel.Text = ""
     mutLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
     mutLabel.Font = Enum.Font.GothamBold
-    mutLabel.TextSize = 9
+    mutLabel.TextSize = 10
     mutLabel.Visible = false
     mutLabel.Parent = billboard
     
     local mutStroke = Instance.new("UIStroke")
-    mutStroke.Thickness = 1
+    mutStroke.Thickness = 1.5
     mutStroke.Color = Color3.new(0, 0, 0)
     mutStroke.Parent = mutLabel
     
@@ -661,15 +660,16 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (ПЛАВНЫЙ ПОЛЁТ, ТОЛЬКО ВВЕРХ)
+-- WALL HOP (ПЛАВНЫЙ ПОЛЁТ + ЗАЧИСТКА КРАЯ)
 --------------------------------------------------
--- Проверяет есть ли блоки впереди. Если есть — плавно поднимает.
--- Если блоков нет — перестаёт поднимать, гравитация опускает.
 local wallHopActive = false
+local wallHopWasClimbing = false
+local wallHopClearTimer = 0
 
 RunService.Heartbeat:Connect(function()
     if not wallHopEnabled or not rootPart or not humanoid then 
         wallHopActive = false
+        wallHopWasClimbing = false
         return 
     end
 
@@ -683,15 +683,36 @@ RunService.Heartbeat:Connect(function()
     if result then
         -- Блоки впереди есть — плавно поднимаем вверх
         wallHopActive = true
-        local upVel = 14 + math.random(-1, 2) -- 13-16, очень плавно
+        wallHopWasClimbing = true
+        wallHopClearTimer = 0
+        
+        local upVel = 20 + math.random(-1, 3) -- 19-23, чуть быстрее
         local currentVel = rootPart.AssemblyLinearVelocity
         rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
     else
-        -- Блоков впереди нет — перестаём поднимать
+        -- Блоков впереди нет
+        if wallHopWasClimbing then
+            -- Мы только что лазили — даём рывок чтобы перелезть край
+            wallHopClearTimer = wallHopClearTimer + 1
+            
+            if wallHopClearTimer < 8 then
+                -- Рывок вверх + вперёд (8 кадров ≈ 0.13 сек)
+                local currentVel = rootPart.AssemblyLinearVelocity
+                rootPart.AssemblyLinearVelocity = Vector3.new(
+                    forwardDirection.X * 25,
+                    30,
+                    forwardDirection.Z * 25
+                )
+            else
+                -- Закончили зачистку
+                wallHopWasClimbing = false
+                wallHopClearTimer = 0
+            end
+        end
+        
         wallHopActive = false
     end
 end)
-
 --------------------------------------------------
 -- ANTI FALL CIRCLE
 --------------------------------------------------
