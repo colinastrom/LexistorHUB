@@ -68,7 +68,6 @@ local antiCheatBypassEnabled = false
 local humanoid
 local rootPart
 local normalSpeed = 16
-local isWallHopping = false
 
 local ESPs = {}
 local AntiFall
@@ -77,10 +76,14 @@ local autoLockConnection
 local antiAfkConnection
 local antiCheatConnection
 
+-- Anti-Knockback state
+local lastJumpTime = 0
+local lastSafePos = nil
+local isCountering = false
+local counterEndTime = 0
+
 local LOCK_STATE_ATTR = "LockState"
 local STATE_IDLE = "Idle"
-local STATE_LOCKED = "Locked"
-local STATE_COOLDOWN = "Cooldown"
 
 --------------------------------------------------
 -- CHARACTER
@@ -89,6 +92,13 @@ local function setupCharacter(character)
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     normalSpeed = humanoid.WalkSpeed
+    
+    -- Track jumps for anti-knockback
+    humanoid.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Jumping then
+            lastJumpTime = os.clock()
+        end
+    end)
 end
 
 if LocalPlayer.Character then
@@ -222,7 +232,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (LOW OFFSET - над головой питомца)
+-- PETS ESP (CLEAN - NO BACKGROUND)
 --------------------------------------------------
 local espTracker = {}
 
@@ -251,17 +261,6 @@ local function getPetMPS(pet)
     return "?"
 end
 
-local function getPetLevel(pet)
-    local tag = pet:FindFirstChild("ItemNameTag", true)
-    if tag then
-        local lvlLabel = tag:FindFirstChild("Level", true)
-        if lvlLabel and lvlLabel:IsA("TextLabel") and lvlLabel.Text ~= "" then
-            return lvlLabel.Text
-        end
-    end
-    return "Level ?"
-end
-
 local function getPetMutation(pet)
     local tag = pet:FindFirstChild("ItemNameTag", true)
     if tag then
@@ -277,18 +276,6 @@ local function getPetMutation(pet)
     return nil
 end
 
-local function getOwnerName(pet)
-    local ownerId = pet:GetAttribute("OwnerUserId")
-    if ownerId then
-        local p = Players:GetPlayerByUserId(ownerId)
-        if p then
-            return p.Name
-        end
-        return "Player " .. tostring(ownerId)
-    end
-    return "Unknown"
-end
-
 local function createPetESP(pet)
     local adornPart = nil
     for _, desc in ipairs(pet:GetDescendants()) do
@@ -299,91 +286,72 @@ local function createPetESP(pet)
     end
     if not adornPart then return nil end
     
+    -- BillboardGui без фона
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "PetESP"
     billboard.Adornee = adornPart
-    billboard.Size = UDim2.new(0, 200, 0, 70)
+    billboard.Size = UDim2.new(0, 150, 0, 50)
     billboard.AlwaysOnTop = true
     billboard.LightInfluence = 0
     billboard.MaxDistance = 0
-    -- ОПУСТИЛИ: было 120, стало 4 — прямо над головой питомца
-    billboard.ExtentsOffset = Vector3.new(0, 4, 0)
+    billboard.ExtentsOffset = Vector3.new(0, 3, 0)
     billboard.Parent = pet
-    
-    local bg = Instance.new("Frame")
-    bg.Name = "BG"
-    bg.Size = UDim2.new(1, 0, 1, 0)
-    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    bg.BackgroundTransparency = 0.35
-    bg.BorderSizePixel = 0
-    bg.Parent = billboard
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = bg
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 1.5
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Parent = bg
     
     local layout = Instance.new("UIListLayout")
     layout.FillDirection = Enum.FillDirection.Vertical
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     layout.VerticalAlignment = Enum.VerticalAlignment.Top
-    layout.Padding = UDim.new(0, 2)
-    layout.Parent = bg
+    layout.Padding = UDim.new(0, 1)
+    layout.Parent = billboard
     
+    -- Только Name (белый, маленький)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PetName"
-    nameLabel.Size = UDim2.new(1, -8, 0, 20)
+    nameLabel.Size = UDim2.new(1, 0, 0, 14)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text = getPetName(pet)
     nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     nameLabel.Font = Enum.Font.GothamBold
-    nameLabel.TextScaled = true
-    nameLabel.Parent = bg
+    nameLabel.TextSize = 10
+    nameLabel.Parent = billboard
     
-    local levelLabel = Instance.new("TextLabel")
-    levelLabel.Name = "Level"
-    levelLabel.Size = UDim2.new(1, -8, 0, 16)
-    levelLabel.BackgroundTransparency = 1
-    levelLabel.Text = getPetLevel(pet)
-    levelLabel.TextColor3 = Color3.fromRGB(180, 180, 255)
-    levelLabel.Font = Enum.Font.Gotham
-    levelLabel.TextScaled = true
-    levelLabel.Parent = bg
+    local nameStroke = Instance.new("UIStroke")
+    nameStroke.Thickness = 1
+    nameStroke.Color = Color3.new(0, 0, 0)
+    nameStroke.Parent = nameLabel
     
+    -- Только MPS (зелёный, маленький)
     local mpsLabel = Instance.new("TextLabel")
     mpsLabel.Name = "MPS"
-    mpsLabel.Size = UDim2.new(1, -8, 0, 16)
+    mpsLabel.Size = UDim2.new(1, 0, 0, 13)
     mpsLabel.BackgroundTransparency = 1
     mpsLabel.Text = getPetMPS(pet)
     mpsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
     mpsLabel.Font = Enum.Font.GothamBold
-    mpsLabel.TextScaled = true
-    mpsLabel.Parent = bg
+    mpsLabel.TextSize = 9
+    mpsLabel.Parent = billboard
     
+    local mpsStroke = Instance.new("UIStroke")
+    mpsStroke.Thickness = 1
+    mpsStroke.Color = Color3.new(0, 0, 0)
+    mpsStroke.Parent = mpsLabel
+    
+    -- Только Mutation (золотой, маленький, только если есть)
     local mutLabel = Instance.new("TextLabel")
     mutLabel.Name = "Mutation"
-    mutLabel.Size = UDim2.new(1, -8, 0, 16)
+    mutLabel.Size = UDim2.new(1, 0, 0, 13)
     mutLabel.BackgroundTransparency = 1
     mutLabel.Text = ""
     mutLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
     mutLabel.Font = Enum.Font.GothamBold
-    mutLabel.TextScaled = true
+    mutLabel.TextSize = 9
     mutLabel.Visible = false
-    mutLabel.Parent = bg
+    mutLabel.Parent = billboard
     
-    local ownerLabel = Instance.new("TextLabel")
-    ownerLabel.Name = "Owner"
-    ownerLabel.Size = UDim2.new(1, -8, 0, 12)
-    ownerLabel.BackgroundTransparency = 1
-    ownerLabel.Text = "Owner: " .. getOwnerName(pet)
-    ownerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    ownerLabel.Font = Enum.Font.Gotham
-    ownerLabel.TextScaled = true
-    ownerLabel.Parent = bg
+    local mutStroke = Instance.new("UIStroke")
+    mutStroke.Thickness = 1
+    mutStroke.Color = Color3.new(0, 0, 0)
+    mutStroke.Parent = mutLabel
     
     local highlight = Instance.new("Highlight")
     highlight.Name = "PetESPHighlight"
@@ -400,20 +368,16 @@ local function createPetESP(pet)
         if mut then
             mutLabel.Text = mut
             mutLabel.Visible = true
-            stroke.Color = Color3.fromRGB(255, 215, 0)
             highlight.FillColor = Color3.fromRGB(255, 215, 0)
             highlight.OutlineColor = Color3.fromRGB(255, 215, 0)
         else
             mutLabel.Visible = false
-            stroke.Color = Color3.fromRGB(50, 50, 50)
             highlight.FillColor = Color3.fromRGB(0, 255, 100)
             highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
         end
         
         nameLabel.Text = getPetName(pet)
-        levelLabel.Text = getPetLevel(pet)
         mpsLabel.Text = getPetMPS(pet)
-        ownerLabel.Text = "Owner: " .. getOwnerName(pet)
     end
     
     updateESP()
@@ -492,71 +456,39 @@ task.spawn(function()
 end)
 
 --------------------------------------------------
--- ANTI KNOCKBACK (AGGRESSIVE)
+-- ANTI KNOCKBACK (POSITION LOCK)
 --------------------------------------------------
--- Порог снижен с 55 до 30 — бита отбрасывает на 40-50
-local VELOCITY_THRESHOLD = 30
-local UPWARD_THRESHOLD = 35
-local MAX_COUNTER_DURATION = 2.0
-
-local isCountering = false
-local counterEndTime = 0
-local lastJumpTime = 0
-
-local function hookCharacterAntiKB(character)
-    local hum = character:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    
-    hum.StateChanged:Connect(function(_, newState)
-        if newState == Enum.HumanoidStateType.Jumping then
-            lastJumpTime = os.clock()
-        end
-    end)
-end
-
-if LocalPlayer.Character then
-    hookCharacterAntiKB(LocalPlayer.Character)
-end
-LocalPlayer.CharacterAdded:Connect(hookCharacterAntiKB)
-
 local function startAntiKnockback()
     if antiKnockbackConnection then return end
 
     antiKnockbackConnection = RunService.Heartbeat:Connect(function()
         if not rootPart or not humanoid or humanoid.Health <= 0 then return end
-        if isWallHopping then return end
-
+        
         local currentVel = rootPart.AssemblyLinearVelocity
         local now = os.clock()
-
+        
         local horizontalSpeed = Vector3.new(currentVel.X, 0, currentVel.Z).Magnitude
         local upwardSpeed = currentVel.Y
-
         local timeSinceJump = now - lastJumpTime
         local isJumpVelocity = timeSinceJump < 0.3
-
-        local horizontalKnockback = horizontalSpeed > VELOCITY_THRESHOLD
-        local upwardKnockback = upwardSpeed > UPWARD_THRESHOLD and not isJumpVelocity
-
-        if horizontalKnockback or upwardKnockback then
+        
+        -- Детект knocksback: горизонтальная скорость > 40 или вертикальная > 35 (не прыжок)
+        if horizontalSpeed > 40 or (upwardSpeed > 35 and not isJumpVelocity) then
             isCountering = true
-            counterEndTime = now + MAX_COUNTER_DURATION
+            counterEndTime = now + 0.5
         end
-
+        
         if isCountering and now < counterEndTime then
-            -- ПОЛНОСТЬЮ гасим горизонтальную velocity (не clamp, а обнул)
-            local clampedX = 0
-            local clampedZ = 0
-            local clampedY = currentVel.Y
-
-            -- Гасим вертикаль если не прыжок
-            if not isJumpVelocity and clampedY > 25 then
-                clampedY = 0
+            -- ПОЛНОСТЬЮ обнуляем velocity
+            rootPart.AssemblyLinearVelocity = Vector3.zero
+            -- Телепортируем обратно на безопасную позицию
+            if lastSafePos then
+                rootPart.CFrame = CFrame.new(lastSafePos)
             end
-
-            rootPart.AssemblyLinearVelocity = Vector3.new(clampedX, clampedY, clampedZ)
         else
             isCountering = false
+            -- Сохраняем безопасную позицию каждый кадр
+            lastSafePos = rootPart.Position
         end
     end)
 end
@@ -607,15 +539,15 @@ local function startAutoLock()
             local myPlot = findMyPlot()
 
             if myPlot and rootPart and humanoid then
+                -- Ищем ТОЛЬКО "Lock" (не "Lock 24hr")
                 local lockObj = myPlot:FindFirstChild("Lock")
                 
-                -- ВАЖНО: игнорируем "Lock 24hr" — трогаем только обычный Lock
                 if lockObj and lockObj.Name == "Lock" then
                     local currentState = lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
                     local pad = lockObj:FindFirstChild("Pad")
 
                     if currentState == STATE_IDLE and pad then
-                        -- Трогаем ТОЛЬКО Pad (не Lock 24hr)
+                        -- Трогаем ТОЛЬКО Pad
                         pcall(function()
                             firetouchinterest(rootPart, pad, 0)
                         end)
@@ -624,10 +556,11 @@ local function startAutoLock()
                             firetouchinterest(rootPart, pad, 1)
                         end)
 
-                    elseif currentState == STATE_COOLDOWN then
+                    elseif currentState == "Cooldown" then
                         if not skipCooldownDebounce then
                             skipCooldownDebounce = true
 
+                            -- Скип кулдауна через Network
                             local netMod = getNetworkModule()
                             if netMod then
                                 local success, network = pcall(function()
@@ -640,7 +573,7 @@ local function startAutoLock()
                                 end
                             end
 
-                            -- Скип кулдауна через ProximityPrompt на Pad
+                            -- Скип через ProximityPrompt на Pad
                             if pad then
                                 local prompt = pad:FindFirstChild("SkipCooldownPrompt")
                                 if prompt and prompt:IsA("ProximityPrompt") then
@@ -728,65 +661,34 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (ПЛАВНЫЙ ПОЛЁТ ВВЕРХ)
+-- WALL HOP (ПЛАВНЫЙ ПОЛЁТ, ТОЛЬКО ВВЕРХ)
 --------------------------------------------------
-local wallHopDebounce = false
-local wallHopLastTrigger = 0
-local activeBodyVel = nil
+-- Проверяет есть ли блоки впереди. Если есть — плавно поднимает.
+-- Если блоков нет — перестаёт поднимать, гравитация опускает.
+local wallHopActive = false
 
 RunService.Heartbeat:Connect(function()
-    if not wallHopEnabled or not rootPart or not humanoid then return end
-    if wallHopDebounce then return end
-
-    local currentTime = tick()
-    if currentTime - wallHopLastTrigger < 1.5 then return end
+    if not wallHopEnabled or not rootPart or not humanoid then 
+        wallHopActive = false
+        return 
+    end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    local directions = {
-        rootPart.CFrame.LookVector,
-        -rootPart.CFrame.LookVector,
-        rootPart.CFrame.RightVector,
-        -rootPart.CFrame.RightVector
-    }
+    local forwardDirection = rootPart.CFrame.LookVector
+    local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
 
-    for _, direction in ipairs(directions) do
-        local result = workspace:Raycast(rootPart.Position, direction * 3, rayParams)
-
-        if result then
-            wallHopDebounce = true
-            wallHopLastTrigger = currentTime
-            isWallHopping = true
-
-            -- Удаляем старый BodyVelocity
-            if activeBodyVel then
-                pcall(function() activeBodyVel:Destroy() end)
-            end
-
-            task.spawn(function()
-                -- Создаём BodyVelocity с НИЗКОЙ скоростью = плавный полёт
-                local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(0, math.huge, 0)
-                bv.Velocity = Vector3.new(0, 25, 0) -- Скорость 25 (было 60) = плавно
-                bv.Parent = rootPart
-                activeBodyVel = bv
-
-                -- Длительность полёта 1.2 секунды
-                task.wait(1.2)
-
-                if bv then
-                    bv:Destroy()
-                end
-                activeBodyVel = nil
-
-                task.wait(0.3)
-                isWallHopping = false
-                wallHopDebounce = false
-            end)
-            break
-        end
+    if result then
+        -- Блоки впереди есть — плавно поднимаем вверх
+        wallHopActive = true
+        local upVel = 14 + math.random(-1, 2) -- 13-16, очень плавно
+        local currentVel = rootPart.AssemblyLinearVelocity
+        rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
+    else
+        -- Блоков впереди нет — перестаём поднимать
+        wallHopActive = false
     end
 end)
 
