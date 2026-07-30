@@ -101,7 +101,7 @@ local function notify(title, text, notifType)
     notifType = notifType or "success"
     local iconColor = Theme.Success
     local iconText = "🛡"
-    
+
     if notifType == "warning" then
         iconColor = Theme.Warning
         iconText = "⚠"
@@ -171,7 +171,6 @@ local function notify(title, text, notifType)
     textLbl.TextXAlignment = Enum.TextXAlignment.Left
     textLbl.Parent = notif
 
-    -- Progress bar
     local progress = Instance.new("Frame")
     progress.Size = UDim2.new(1, 0, 0, 3)
     progress.Position = UDim2.new(0, 0, 1, -3)
@@ -237,6 +236,7 @@ local antiAfkEnabled = false
 local humanoid
 local rootPart
 local normalSpeed = 16
+local isWallHopping = false
 
 local ESPs = {}
 local AntiFall
@@ -260,7 +260,7 @@ local function setupCharacter(character)
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     normalSpeed = humanoid.WalkSpeed
-    
+
     humanoid.StateChanged:Connect(function(_, newState)
         if newState == Enum.HumanoidStateType.Jumping then
             lastJumpTime = os.clock()
@@ -402,7 +402,7 @@ end)
 -- PETS ESP
 --------------------------------------------------
 local espTracker = {}
-local petFilterName = "" 
+local petFilterName = ""
 local petFilterMPS = 0
 
 local function removePetESP(pet)
@@ -433,15 +433,15 @@ end
 local function getPetMPSValue(pet)
     local mpsText = getPetMPS(pet)
     local lowerText = mpsText:lower()
-    
+
     local mult = 1
     if lowerText:find("k") then mult = 1000
     elseif lowerText:find("m") then mult = 1000000
     elseif lowerText:find("b") then mult = 1000000000 end
-    
+
     local numStr = mpsText:gsub("[^%d%.]", "")
     local val = tonumber(numStr)
-    
+
     if val then return val * mult end
     return 0
 end
@@ -464,15 +464,15 @@ end
 local function passesFilter(pet)
     local name = getPetName(pet):lower()
     local mps = getPetMPSValue(pet)
-    
+
     if petFilterName ~= "" and not name:find(petFilterName:lower()) then
         return false
     end
-    
+
     if petFilterMPS > 0 and mps < petFilterMPS then
         return false
     end
-    
+
     return true
 end
 
@@ -485,7 +485,7 @@ local function createPetESP(pet)
         end
     end
     if not adornPart then return nil end
-    
+
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "PetESP"
     billboard.Adornee = adornPart
@@ -495,14 +495,14 @@ local function createPetESP(pet)
     billboard.MaxDistance = 0
     billboard.ExtentsOffset = Vector3.new(0, 3, 0)
     billboard.Parent = pet
-    
+
     local layout = Instance.new("UIListLayout")
     layout.FillDirection = Enum.FillDirection.Vertical
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     layout.VerticalAlignment = Enum.VerticalAlignment.Top
     layout.Padding = UDim.new(0, 1)
     layout.Parent = billboard
-    
+
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PetName"
     nameLabel.Size = UDim2.new(1, 0, 0, 14)
@@ -512,12 +512,12 @@ local function createPetESP(pet)
     nameLabel.Font = Enum.Font.GothamBold
     nameLabel.TextSize = 11
     nameLabel.Parent = billboard
-    
+
     local nameStroke = Instance.new("UIStroke")
     nameStroke.Thickness = 1.5
     nameStroke.Color = Color3.new(0, 0, 0)
     nameStroke.Parent = nameLabel
-    
+
     local mpsLabel = Instance.new("TextLabel")
     mpsLabel.Name = "MPS"
     mpsLabel.Size = UDim2.new(1, 0, 0, 13)
@@ -527,12 +527,12 @@ local function createPetESP(pet)
     mpsLabel.Font = Enum.Font.GothamBold
     mpsLabel.TextSize = 10
     mpsLabel.Parent = billboard
-    
+
     local mpsStroke = Instance.new("UIStroke")
     mpsStroke.Thickness = 1.5
     mpsStroke.Color = Color3.new(0, 0, 0)
     mpsStroke.Parent = mpsLabel
-    
+
     local mutLabel = Instance.new("TextLabel")
     mutLabel.Name = "Mutation"
     mutLabel.Size = UDim2.new(1, 0, 0, 13)
@@ -543,12 +543,12 @@ local function createPetESP(pet)
     mutLabel.TextSize = 10
     mutLabel.Visible = false
     mutLabel.Parent = billboard
-    
+
     local mutStroke = Instance.new("UIStroke")
     mutStroke.Thickness = 1.5
     mutStroke.Color = Color3.new(0, 0, 0)
     mutStroke.Parent = mutLabel
-    
+
     local highlight = Instance.new("Highlight")
     highlight.Name = "PetESPHighlight"
     highlight.Adornee = pet
@@ -558,7 +558,7 @@ local function createPetESP(pet)
     highlight.FillColor = Color3.fromRGB(0, 255, 100)
     highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
     highlight.Parent = pet
-    
+
     local function updateESP()
         if not passesFilter(pet) then
             billboard.Enabled = false
@@ -568,7 +568,7 @@ local function createPetESP(pet)
             billboard.Enabled = petsEspEnabled
             highlight.Enabled = petsEspEnabled
         end
-        
+
         local mut = getPetMutation(pet)
         if mut then
             mutLabel.Text = mut
@@ -580,13 +580,13 @@ local function createPetESP(pet)
             highlight.FillColor = Color3.fromRGB(0, 255, 100)
             highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
         end
-        
+
         nameLabel.Text = getPetName(pet)
         mpsLabel.Text = getPetMPS(pet)
     end
-    
+
     updateESP()
-    
+
     return {
         billboard = billboard,
         highlight = highlight,
@@ -597,7 +597,7 @@ end
 local function setupPetESP(pet)
     if espTracker[pet] then return end
     if pet:GetAttribute("Species") == nil then return end
-    
+
     local esp = createPetESP(pet)
     if esp then
         espTracker[pet] = esp
@@ -607,7 +607,7 @@ end
 local function scanPets()
     local runtimePets = Workspace:FindFirstChild("RuntimePets")
     if not runtimePets then return end
-    
+
     for _, pet in ipairs(runtimePets:GetChildren()) do
         setupPetESP(pet)
     end
@@ -668,20 +668,20 @@ local function startAntiKnockback()
 
     antiKnockbackConnection = RunService.Heartbeat:Connect(function()
         if not rootPart or not humanoid or humanoid.Health <= 0 then return end
-        
+
         local currentVel = rootPart.AssemblyLinearVelocity
         local now = os.clock()
-        
+
         local horizontalSpeed = Vector3.new(currentVel.X, 0, currentVel.Z).Magnitude
         local upwardSpeed = currentVel.Y
         local timeSinceJump = now - lastJumpTime
         local isJumpVelocity = timeSinceJump < 0.3
-        
+
         if horizontalSpeed > 40 or (upwardSpeed > 35 and not isJumpVelocity) then
             isCountering = true
             counterEndTime = now + 0.5
         end
-        
+
         if isCountering and now < counterEndTime then
             rootPart.AssemblyLinearVelocity = Vector3.zero
             if lastSafePos then
@@ -730,7 +730,7 @@ local function startAutoLock()
 
             if myPlot and rootPart and humanoid then
                 local lockObj = myPlot:FindFirstChild("Lock")
-                
+
                 if lockObj and lockObj.Name == "Lock" then
                     local currentState = lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
                     local pad = lockObj:FindFirstChild("Pad")
@@ -780,10 +780,10 @@ local wallHopWasClimbing = false
 local wallHopClearTimer = 0
 
 RunService.Heartbeat:Connect(function()
-    if not wallHopEnabled or not rootPart or not humanoid then 
+    if not wallHopEnabled or not rootPart or not humanoid then
         wallHopActive = false
         wallHopWasClimbing = false
-        return 
+        return
     end
 
     local rayParams = RaycastParams.new()
@@ -797,14 +797,14 @@ RunService.Heartbeat:Connect(function()
         wallHopActive = true
         wallHopWasClimbing = true
         wallHopClearTimer = 0
-        
+
         local upVel = 20 + math.random(-1, 3)
         local currentVel = rootPart.AssemblyLinearVelocity
         rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
     else
         if wallHopWasClimbing then
             wallHopClearTimer = wallHopClearTimer + 1
-            
+
             if wallHopClearTimer < 8 then
                 rootPart.AssemblyLinearVelocity = Vector3.new(
                     forwardDirection.X * 25,
@@ -816,7 +816,7 @@ RunService.Heartbeat:Connect(function()
                 wallHopClearTimer = 0
             end
         end
-        
+
         wallHopActive = false
     end
 end)
@@ -877,30 +877,30 @@ local function smoothVerticalMove(distance, direction)
 
     local startPos = rootPart.Position
     local targetY = startPos.Y + (distance * direction)
-    
+
     task.spawn(function()
         local originalCollide = rootPart.CanCollide
         pcall(function() rootPart.CanCollide = false end)
-        
+
         local steps = math.abs(distance) * 4
         local stepSize = (distance / steps) * direction
-        
+
         for i = 1, steps do
             if not rootPart then break end
             rootPart.CFrame = rootPart.CFrame + Vector3.new(0, stepSize, 0)
             task.wait(0.005)
         end
-        
+
         if rootPart then
             rootPart.CFrame = CFrame.new(
                 rootPart.Position.X,
                 targetY,
                 rootPart.Position.Z
             ) * CFrame.Angles(0, math.rad(rootPart.Orientation.Y), 0)
-            
+
             pcall(function() rootPart.CanCollide = originalCollide end)
         end
-        
+
         task.wait(0.2)
         baseDebounce = false
     end)
@@ -925,6 +925,73 @@ local function SaveJobs()
     if writefile then
         writefile(FileName, HttpService:JSONEncode(SavedJobs))
     end
+end
+
+--------------------------------------------------
+-- SERVER HOP
+--------------------------------------------------
+local ServerSearching = false
+
+local function GetServers()
+    local AllServers = {}
+    local Cursor = nil
+
+    for Page = 1, 5 do
+        local Url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?limit=100"
+        if Cursor then
+            Url = Url .. "&cursor=" .. HttpService:UrlEncode(Cursor)
+        end
+
+        local Success, Result = pcall(function()
+            return game:HttpGet(Url)
+        end)
+        if not Success then break end
+
+        local DecodeSuccess, Data = pcall(function()
+            return HttpService:JSONDecode(Result)
+        end)
+        if not DecodeSuccess or type(Data) ~= "table" then break end
+
+        if type(Data.data) == "table" then
+            for _, Server in ipairs(Data.data) do
+                if Server.id and Server.playing and Server.maxPlayers then
+                    table.insert(AllServers, Server)
+                end
+            end
+        end
+
+        Cursor = Data.nextPageCursor
+        if not Cursor then break end
+        task.wait(0.25)
+    end
+
+    return AllServers
+end
+
+local function FindServer(Mode)
+    local BestServer = nil
+
+    for Attempt = 1, 5 do
+        local Servers = GetServers()
+
+        for _, Server in ipairs(Servers) do
+            if Server.id ~= game.JobId and Server.playing < Server.maxPlayers then
+                if Mode == "BUSY" then
+                    if not BestServer or Server.playing > BestServer.playing then
+                        BestServer = Server
+                    end
+                elseif Mode == "EMPTY" then
+                    if not BestServer or Server.playing < BestServer.playing then
+                        BestServer = Server
+                    end
+                end
+            end
+        end
+
+        if BestServer then return BestServer end
+        task.wait(1)
+    end
+    return nil
 end
 
 --------------------------------------------------
@@ -1204,6 +1271,66 @@ local function CreateButton(parent, text, callback)
 end
 
 --------------------------------------------------
+-- POPUP MENU CREATOR
+--------------------------------------------------
+local function CreatePopupMenu(title, width, height)
+    local menu = Instance.new("Frame")
+    menu.Size = UDim2.new(0, width, 0, height)
+    menu.Position = UDim2.new(0.5, -width/2, 0.5, -height/2)
+    menu.BackgroundColor3 = Theme.Card
+    menu.BorderSizePixel = 0
+    menu.Visible = false
+    menu.Active = true
+    menu.ZIndex = 20
+    menu.Parent = ScreenGui
+
+    MakeDraggable(menu)
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = menu
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Theme.Stroke
+    stroke.Thickness = 1.5
+    stroke.Parent = menu
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -10, 0, 25)
+    titleLbl.Position = UDim2.new(0, 10, 0, 5)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = title
+    titleLbl.TextColor3 = Theme.Text
+    titleLbl.TextSize = 12
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.ZIndex = 21
+    titleLbl.Parent = menu
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 20, 0, 20)
+    closeBtn.Position = UDim2.new(1, -25, 0, 5)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(80, 30, 30)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 9
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.ZIndex = 21
+    closeBtn.Parent = menu
+
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 5)
+    closeCorner.Parent = closeBtn
+
+    closeBtn.MouseButton1Click:Connect(function()
+        menu.Visible = false
+    end)
+
+    return menu
+end
+
+--------------------------------------------------
 -- BUILD PAGES
 --------------------------------------------------
 local MainPage = CreateTab("Main", "🏠")
@@ -1232,10 +1359,6 @@ CreateToggle(MainPage, "Pets ESP", function(state)
     end
 end)
 
-CreateButton(MainPage, "Pet Filter", function()
-    -- Open filter menu
-end)
-
 CreateToggle(MainPage, "Anti Fall", function(state)
     antiFallEnabled = state
     notify("Anti Fall", state and "Enabled" or "Disabled", "info")
@@ -1252,8 +1375,12 @@ CreateToggle(MainPage, "Anti AFK", function(state)
     if antiAfkEnabled then startAntiAfk() else stopAntiAfk() end
 end)
 
+CreateButton(MainPage, "Pet Filter", function()
+    PetFilterMenu.Visible = not PetFilterMenu.Visible
+end)
+
 CreateButton(MainPage, "Bypass Menu", function()
-    -- Open bypass menu
+    BypassMenu.Visible = not BypassMenu.Visible
 end)
 
 -- COMBAT PAGE
@@ -1269,7 +1396,140 @@ CreateToggle(CombatPage, "Auto Lock Base", function(state)
     if autoLockEnabled then startAutoLock() else stopAutoLock() end
 end)
 
+--------------------------------------------------
+-- BYPASS MENU
+--------------------------------------------------
+local BypassMenu = CreatePopupMenu("BYPASS", 200, 200)
+
+local BypassToggle = CreateToggle(BypassMenu, "Wall Hop", function(state)
+    wallHopEnabled = state
+    notify("Wall Hop", state and "Enabled" or "Disabled", "info")
+end)
+BypassToggle.Position = UDim2.new(0, 10, 0, 35)
+BypassToggle.Size = UDim2.new(1, -20, 0, 40)
+
+local EnterBaseBtn = CreateButton(BypassMenu, "Enter Base", function()
+    smoothVerticalMove(DOWN_DISTANCE, -1)
+    notify("Enter Base", "Moving down", "info")
+end)
+EnterBaseBtn.Position = UDim2.new(0, 10, 0, 85)
+EnterBaseBtn.Size = UDim2.new(1, -20, 0, 35)
+
+local ExitBaseBtn = CreateButton(BypassMenu, "Exit Base", function()
+    smoothVerticalMove(UP_DISTANCE, 1)
+    notify("Exit Base", "Moving up", "info")
+end)
+ExitBaseBtn.Position = UDim2.new(0, 10, 0, 130)
+ExitBaseBtn.Size = UDim2.new(1, -20, 0, 35)
+
+--------------------------------------------------
+-- PET FILTER MENU
+--------------------------------------------------
+local PetFilterMenu = CreatePopupMenu("PET FILTERS", 260, 160)
+
+-- Name field
+local filterNameLbl = Instance.new("TextLabel")
+filterNameLbl.Size = UDim2.new(0.4, 0, 0, 20)
+filterNameLbl.Position = UDim2.new(0, 10, 0, 35)
+filterNameLbl.BackgroundTransparency = 1
+filterNameLbl.Text = "Name:"
+filterNameLbl.TextColor3 = Theme.TextDark
+filterNameLbl.TextSize = 10
+filterNameLbl.Font = Enum.Font.Gotham
+filterNameLbl.TextXAlignment = Enum.TextXAlignment.Left
+filterNameLbl.ZIndex = 21
+filterNameLbl.Parent = PetFilterMenu
+
+local nameBox = Instance.new("TextBox")
+nameBox.Size = UDim2.new(0.55, 0, 0, 25)
+nameBox.Position = UDim2.new(0.4, 0, 0, 33)
+nameBox.BackgroundColor3 = Theme.Background
+nameBox.BorderSizePixel = 0
+nameBox.Text = ""
+nameBox.PlaceholderText = "e.g. Dragon"
+nameBox.TextColor3 = Theme.Text
+nameBox.PlaceholderColor3 = Theme.TextDark
+nameBox.TextSize = 10
+nameBox.Font = Enum.Font.Gotham
+nameBox.ZIndex = 21
+nameBox.Parent = PetFilterMenu
+
+local nameBoxCorner = Instance.new("UICorner")
+nameBoxCorner.CornerRadius = UDim.new(0, 6)
+nameBoxCorner.Parent = nameBox
+
+local nameBoxStroke = Instance.new("UIStroke")
+nameBoxStroke.Color = Theme.Stroke
+nameBoxStroke.Thickness = 1
+nameBoxStroke.Parent = nameBox
+
+-- MPS field
+local filterMpsLbl = Instance.new("TextLabel")
+filterMpsLbl.Size = UDim2.new(0.4, 0, 0, 20)
+filterMpsLbl.Position = UDim2.new(0, 10, 0, 70)
+filterMpsLbl.BackgroundTransparency = 1
+filterMpsLbl.Text = "Min MPS:"
+filterMpsLbl.TextColor3 = Theme.TextDark
+filterMpsLbl.TextSize = 10
+filterMpsLbl.Font = Enum.Font.Gotham
+filterMpsLbl.TextXAlignment = Enum.TextXAlignment.Left
+filterMpsLbl.ZIndex = 21
+filterMpsLbl.Parent = PetFilterMenu
+
+local mpsBox = Instance.new("TextBox")
+mpsBox.Size = UDim2.new(0.55, 0, 0, 25)
+mpsBox.Position = UDim2.new(0.4, 0, 0, 68)
+mpsBox.BackgroundColor3 = Theme.Background
+mpsBox.BorderSizePixel = 0
+mpsBox.Text = "0"
+mpsBox.TextColor3 = Theme.Text
+mpsBox.TextSize = 10
+mpsBox.Font = Enum.Font.Gotham
+mpsBox.ZIndex = 21
+mpsBox.Parent = PetFilterMenu
+
+local mpsBoxCorner = Instance.new("UICorner")
+mpsBoxCorner.CornerRadius = UDim.new(0, 6)
+mpsBoxCorner.Parent = mpsBox
+
+local mpsBoxStroke = Instance.new("UIStroke")
+mpsBoxStroke.Color = Theme.Stroke
+mpsBoxStroke.Thickness = 1
+mpsBoxStroke.Parent = mpsBox
+
+-- Apply button
+local applyBtn = CreateButton(PetFilterMenu, "APPLY", function()
+    petFilterName = nameBox.Text
+    local inputText = mpsBox.Text:lower()
+    local mult = 1
+    if inputText:find("k") then mult = 1000
+    elseif inputText:find("m") then mult = 1000000
+    elseif inputText:find("b") then mult = 1000000000 end
+    local numStr = inputText:gsub("[^%d%.]", "")
+    local val = tonumber(numStr)
+    if val then petFilterMPS = val * mult else petFilterMPS = 0 end
+    PetFilterMenu.Visible = false
+    notify("Pet Filter", "Applied successfully", "success")
+end)
+applyBtn.Position = UDim2.new(0.1, 5, 0, 110)
+applyBtn.Size = UDim2.new(0.35, -5, 0, 30)
+applyBtn.ZIndex = 21
+
+-- Clear button
+local clearBtn = CreateButton(PetFilterMenu, "CLEAR", function()
+    nameBox.Text = ""
+    mpsBox.Text = "0"
+    petFilterName = ""
+    petFilterMPS = 0
+    notify("Pet Filter", "Cleared", "info")
+end)
+clearBtn.Position = UDim2.new(0.55, 0, 0, 110)
+clearBtn.Size = UDim2.new(0.35, -5, 0, 30)
+clearBtn.ZIndex = 21
+
+--------------------------------------------------
 -- SERVER PAGE
+--------------------------------------------------
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -10, 0, 20)
 StatusLabel.BackgroundTransparency = 1
@@ -1279,6 +1539,101 @@ StatusLabel.TextSize = 11
 StatusLabel.Font = Enum.Font.GothamBold
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.Parent = ServerPage
+
+-- Scrollable list for saved servers
+local ServerScroll = Instance.new("ScrollingFrame")
+ServerScroll.Size = UDim2.new(1, -10, 0, 100)
+ServerScroll.BackgroundTransparency = 1
+ServerScroll.BorderSizePixel = 0
+ServerScroll.ScrollBarThickness = 2
+ServerScroll.ScrollBarImageColor3 = Theme.Stroke
+ServerScroll.Parent = ServerPage
+
+local ServerListLayout = Instance.new("UIListLayout")
+ServerListLayout.FillDirection = Enum.FillDirection.Vertical
+ServerListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+ServerListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+ServerListLayout.Padding = UDim.new(0, 5)
+ServerListLayout.Parent = ServerScroll
+
+local function UpdateServerList()
+    for _, child in ipairs(ServerScroll:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+
+    for index, Data in ipairs(SavedJobs) do
+        local Row = Instance.new("Frame")
+        Row.Size = UDim2.new(1, -4, 0, 35)
+        Row.BackgroundColor3 = Theme.Card
+        Row.BorderSizePixel = 0
+        Row.Parent = ServerScroll
+
+        local RowCorner = Instance.new("UICorner")
+        RowCorner.CornerRadius = UDim.new(0, 6)
+        RowCorner.Parent = Row
+
+        local RowStroke = Instance.new("UIStroke")
+        RowStroke.Color = Theme.Stroke
+        RowStroke.Thickness = 1
+        RowStroke.Parent = Row
+
+        local JobText = Instance.new("TextLabel")
+        JobText.Size = UDim2.new(1, -100, 1, 0)
+        JobText.Position = UDim2.new(0, 10, 0, 0)
+        JobText.BackgroundTransparency = 1
+        JobText.Text = Data.Name or ("Server " .. index)
+        JobText.TextColor3 = Theme.Text
+        JobText.TextSize = 10
+        JobText.Font = Enum.Font.Gotham
+        JobText.TextXAlignment = Enum.TextXAlignment.Left
+        JobText.Parent = Row
+
+        local JoinBtn = Instance.new("TextButton")
+        JoinBtn.Size = UDim2.new(0, 50, 1, -10)
+        JoinBtn.Position = UDim2.new(1, -110, 0, 5)
+        JoinBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 50)
+        JoinBtn.BorderSizePixel = 0
+        JoinBtn.Text = "JOIN"
+        JoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        JoinBtn.TextSize = 9
+        JoinBtn.Font = Enum.Font.GothamBold
+        JoinBtn.Parent = Row
+
+        local JoinCorner = Instance.new("UICorner")
+        JoinCorner.CornerRadius = UDim.new(0, 4)
+        JoinCorner.Parent = JoinBtn
+
+        JoinBtn.MouseButton1Click:Connect(function()
+            TeleportService:TeleportToPlaceInstance(PlaceId, Data.JobId, LocalPlayer)
+        end)
+
+        local DeleteBtn = Instance.new("TextButton")
+        DeleteBtn.Size = UDim2.new(0, 40, 1, -10)
+        DeleteBtn.Position = UDim2.new(1, -55, 0, 5)
+        DeleteBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 40)
+        DeleteBtn.BorderSizePixel = 0
+        DeleteBtn.Text = "X"
+        DeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        DeleteBtn.TextSize = 9
+        DeleteBtn.Font = Enum.Font.GothamBold
+        DeleteBtn.Parent = Row
+
+        local DelCorner = Instance.new("UICorner")
+        DelCorner.CornerRadius = UDim.new(0, 4)
+        DelCorner.Parent = DeleteBtn
+
+        DeleteBtn.MouseButton1Click:Connect(function()
+            table.remove(SavedJobs, index)
+            SaveJobs()
+            UpdateServerList()
+            StatusLabel.Text = "Saved Jobs: " .. #SavedJobs
+        end)
+    end
+
+    ServerScroll.CanvasSize = UDim2.new(0, 0, 0, ServerListLayout.AbsoluteContentSize.Y + 5)
+end
 
 CreateButton(ServerPage, "Copy & Save Job", function()
     local CurrentJobId = game.JobId
@@ -1300,6 +1655,7 @@ CreateButton(ServerPage, "Copy & Save Job", function()
     if setclipboard then setclipboard(CurrentJobId) end
     notify("Server Hop", "Saved & Copied!", "success")
     StatusLabel.Text = "Saved Jobs: " .. #SavedJobs
+    UpdateServerList()
 end)
 
 CreateButton(ServerPage, "Reconnect", function()
@@ -1338,5 +1694,8 @@ CreateButton(ServerPage, "Join Empty Server", function()
     ServerSearching = false
 end)
 
--- Start
+--------------------------------------------------
+-- START
+--------------------------------------------------
 switchTab("Main")
+UpdateServerList()
