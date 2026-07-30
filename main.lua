@@ -486,8 +486,32 @@ task.spawn(function()
 end)
 
 --------------------------------------------------
--- ANTI KNOCKBACK
+-- ANTI KNOCKBACK (ADVANCED)
 --------------------------------------------------
+local VELOCITY_THRESHOLD = 55
+local UPWARD_THRESHOLD = 55
+local MAX_COUNTER_DURATION = 1.5
+
+local isCountering = false
+local counterEndTime = 0
+local lastJumpTime = 0
+
+local function hookCharacterAntiKB(character)
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    
+    hum.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Jumping then
+            lastJumpTime = os.clock()
+        end
+    end)
+end
+
+if LocalPlayer.Character then
+    hookCharacterAntiKB(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(hookCharacterAntiKB)
+
 local function startAntiKnockback()
     if antiKnockbackConnection then return end
 
@@ -495,13 +519,45 @@ local function startAntiKnockback()
         if not rootPart or not humanoid or humanoid.Health <= 0 then return end
         if isWallHopping then return end
 
-        local vel = rootPart.AssemblyLinearVelocity
-        local horizontalSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+        local currentVel = rootPart.AssemblyLinearVelocity
+        local now = os.clock()
 
-        local maxSpeed = (autoRun and FAST_SPEED or normalSpeed) + 15
+        local horizontalSpeed = Vector3.new(currentVel.X, 0, currentVel.Z).Magnitude
+        local upwardSpeed = currentVel.Y
 
-        if horizontalSpeed > maxSpeed then
-            rootPart.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
+        local timeSinceJump = now - lastJumpTime
+        local isJumpVelocity = timeSinceJump < 0.3
+
+        local horizontalKnockback = horizontalSpeed > VELOCITY_THRESHOLD
+        local upwardKnockback = upwardSpeed > UPWARD_THRESHOLD and not isJumpVelocity
+
+        if horizontalKnockback or upwardKnockback then
+            isCountering = true
+            counterEndTime = now + MAX_COUNTER_DURATION
+        end
+
+        if isCountering and now < counterEndTime then
+            local walkSpeed = humanoid.WalkSpeed
+            local maxSpeed = math.max(walkSpeed * 3, VELOCITY_THRESHOLD)
+
+            local clampedX = currentVel.X
+            local clampedZ = currentVel.Z
+            local clampedY = currentVel.Y
+
+            local horiz = Vector3.new(clampedX, 0, clampedZ)
+            if horiz.Magnitude > maxSpeed then
+                horiz = horiz.Unit * maxSpeed
+                clampedX = horiz.X
+                clampedZ = horiz.Z
+            end
+
+            if not isJumpVelocity and clampedY > 50 then
+                clampedY = math.min(clampedY, 25)
+            end
+
+            rootPart.AssemblyLinearVelocity = Vector3.new(clampedX, clampedY, clampedZ)
+        else
+            isCountering = false
         end
     end)
 end
@@ -679,7 +735,7 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (BodyVelocity Flight)
+-- WALL HOP (ORIGINAL STEALTH)
 --------------------------------------------------
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
@@ -689,37 +745,42 @@ RunService.Heartbeat:Connect(function()
     if wallHopDebounce then return end
 
     local currentTime = tick()
-    if currentTime - wallHopLastTrigger < 1 then return end
+    if currentTime - wallHopLastTrigger < 0.3 then return end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    local forwardDirection = rootPart.CFrame.LookVector
-    local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
+    local directions = {
+        rootPart.CFrame.LookVector,
+        -rootPart.CFrame.LookVector,
+        rootPart.CFrame.RightVector,
+        -rootPart.CFrame.RightVector
+    }
 
-    if result then
-        wallHopDebounce = true
-        wallHopLastTrigger = currentTime
-        isWallHopping = true
+    for _, direction in ipairs(directions) do
+        local result = workspace:Raycast(rootPart.Position, direction * 3, rayParams)
 
-        task.spawn(function()
-            local bv = Instance.new("BodyVelocity")
-            bv.MaxForce = Vector3.new(0, math.huge, 0)
-            bv.Velocity = Vector3.new(0, 60, 0)
-            bv.Parent = rootPart
-            
-            task.wait(0.8) -- Длительность полёта
-            
-            if bv then bv:Destroy() end
-            
-            task.wait(0.5)
+        if result then
+            wallHopDebounce = true
+            wallHopLastTrigger = currentTime
+            isWallHopping = true
+
+            -- Рандомизированная velocity (оригинал был 45, теперь 32-42)
+            local jumpPower = math.random(32, 42)
+            rootPart.AssemblyLinearVelocity = Vector3.new(
+                rootPart.AssemblyLinearVelocity.X,
+                jumpPower,
+                rootPart.AssemblyLinearVelocity.Z
+            )
+
+            task.wait(0.25)
             isWallHopping = false
             wallHopDebounce = false
-        end)
+            break
+        end
     end
 end)
-
 --------------------------------------------------
 -- ANTI FALL CIRCLE
 --------------------------------------------------
