@@ -249,17 +249,74 @@ local function getPetMath()
     return nil
 end
 
+-- Получаем множитель мутации
+local function getMutationMultiplier(mutation)
+    if not mutation or mutation == "None" or mutation == "Normal" or mutation == "" then
+        return 1
+    end
+    
+    local mutationsFolder = ReplicatedStorage:FindFirstChild("Mutations")
+    if mutationsFolder then
+        local mutData = mutationsFolder:FindFirstChild(mutation)
+        if mutData then
+            local mult = mutData:FindFirstChild("Multiplier") or mutData:FindFirstChild("MPSMultiplier")
+            if mult and mult:IsA("ValueBase") then
+                return mult.Value
+            end
+            local attr = mutData:GetAttribute("Multiplier") or mutData:GetAttribute("MPSMultiplier")
+            if attr then return attr end
+        end
+    end
+    
+    -- Базовые множители если не нашли
+    local defaults = {
+        ["OG"] = 2,
+        ["Celestial"] = 3,
+        ["Galactic"] = 5,
+        ["Mythic"] = 10,
+    }
+    return defaults[mutation] or 1
+end
+
 local function getPetInfo(pet)
     local species = pet:GetAttribute("Species") or pet.Name
     local mutation = pet:GetAttribute("Mutation")
-    local level = pet:GetAttribute("Level") or 1
-    local mps = nil
+    
+    -- Ищем уровень (атрибут или объект)
+    local level = pet:GetAttribute("Level")
+    if not level then
+        local levelObj = pet:FindFirstChild("Level")
+        if levelObj and levelObj:IsA("ValueBase") then
+            level = levelObj.Value
+        end
+    end
+    level = level or 1
 
+    local mps = nil
     local petMath = getPetMath()
+    
+    -- Способ 1: PetMath.mps
     if petMath and petMath.mps then
         pcall(function()
             mps = petMath.mps(species, level, mutation)
         end)
+    end
+    
+    -- Способ 2: Ручной расчёт
+    if not mps then
+        local petsFolder = ReplicatedStorage:FindFirstChild("Pets")
+        if petsFolder then
+            local template = petsFolder:FindFirstChild(species)
+            if template then
+                local mpsObj = template:FindFirstChild("MPS") or template:FindFirstChild("#MPS")
+                if mpsObj and mpsObj:IsA("ValueBase") then
+                    local baseMPS = mpsObj.Value
+                    local levelMult = 1.25 ^ (level - 1)
+                    local mutMult = getMutationMultiplier(mutation)
+                    mps = baseMPS * levelMult * mutMult
+                end
+            end
+        end
     end
 
     return species, mutation, mps
@@ -569,17 +626,18 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (SMOOTH UPWARD)
+-- WALL HOP (LIFT PLATFORM)
 --------------------------------------------------
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
+local activeLift = nil
 
 RunService.Heartbeat:Connect(function()
     if not wallHopEnabled or not rootPart or not humanoid then return end
     if wallHopDebounce then return end
 
     local currentTime = tick()
-    if currentTime - wallHopLastTrigger < 0.5 then return end
+    if currentTime - wallHopLastTrigger < 0.8 then return end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
@@ -593,13 +651,51 @@ RunService.Heartbeat:Connect(function()
         wallHopLastTrigger = currentTime
         isWallHopping = true
 
+        -- Удаляем старый лифт если есть
+        if activeLift then
+            pcall(function() activeLift:Destroy() end)
+        end
+
+        -- Создаём невидимую платформу
+        local platform = Instance.new("Part")
+        platform.Name = "WallHopLift"
+        platform.Size = Vector3.new(6, 0.5, 6)
+        platform.Anchored = true
+        platform.CanCollide = true
+        platform.CanQuery = false
+        platform.CanTouch = false
+        platform.Transparency = 1
+        platform.Material = Enum.Material.Air
+        platform.CFrame = CFrame.new(rootPart.Position.X, rootPart.Position.Y - 3.2, rootPart.Position.Z)
+        platform.Parent = workspace
+        activeLift = platform
+
+        -- Плавно поднимаем платформу
         task.spawn(function()
-            -- Плавный полёт вверх без рывков и без вперёд
-            for i = 1, 30 do
+            local startY = platform.CFrame.Y
+            local targetY = startY + 35 -- Высота подъёма
+            local currentY = startY
+            local steps = 60 -- Количество шагов (плавность)
+            local stepSize = (targetY - startY) / steps
+            
+            for i = 1, steps do
+                if not platform or not platform.Parent then break end
                 if not rootPart then break end
-                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 1, 0)
-                task.wait(0.02)
+                
+                currentY = currentY + stepSize
+                platform.CFrame = CFrame.new(rootPart.Position.X, currentY, rootPart.Position.Z)
+                
+                -- Двигаем игрока вместе с платформой
+                rootPart.CFrame = CFrame.new(rootPart.Position.X, currentY + 3.2, rootPart.Position.Z)
+                
+                task.wait(0.03)
             end
+            
+            -- Удаляем платформу
+            if platform then
+                pcall(function() platform:Destroy() end)
+            end
+            activeLift = nil
             
             task.wait(0.3)
             isWallHopping = false
