@@ -1,6 +1,5 @@
 --// SSSHUB STEAL + MAIN
 --// By Rosomax0 • Developer
---// MODIFIED BY R0
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -39,6 +38,7 @@ local Theme = {
 --------------------------------------------------
 local ConfigFile = "SSSHubConfig.json"
 local Config = {}
+local SaveConfigEnabled = true
 
 local function LoadConfig()
     if isfile and isfile(ConfigFile) then
@@ -48,19 +48,22 @@ local function LoadConfig()
 end
 
 local function SaveConfig()
+    if not SaveConfigEnabled then return end
     if writefile then writefile(ConfigFile, HttpService:JSONEncode(Config)) end
 end
 
 LoadConfig()
 
--- Load accent color
+if Config.SaveConfigEnabled ~= nil then
+    SaveConfigEnabled = Config.SaveConfigEnabled
+end
+
 if Config.AccentColor then
     local c = Config.AccentColor
-    Theme.Acccent = Color3.fromRGB(c[1], c[2], c[3])
+    Theme.Accent = Color3.fromRGB(c[1], c[2], c[3])
     Theme.ToggleOn = Color3.fromRGB(c[1], c[2], c[3])
 end
 
--- Load keybinds
 local Keybinds = Config.Keybinds or {}
 
 local function GetKeybind(name, default)
@@ -76,31 +79,26 @@ end
 --------------------------------------------------
 -- ACCENT COLOR SYSTEM
 --------------------------------------------------
-local AccentTracker = {
-    Static = {},
-    Toggles = {},
-    Tabs = {}
-}
+local AccentTracker = { Static = {}, Toggles = {}, Tabs = {} }
+local CurrentAccent = Theme.Accent
+local SelectedColorSwatch = nil
 
 local function SetAccent(color)
     Theme.Accent = color
     Theme.ToggleOn = color
-    
+    CurrentAccent = color
     Config.AccentColor = {math.floor(color.R * 255), math.floor(color.G * 255), math.floor(color.B * 255)}
     SaveConfig()
-    
     for _, elem in ipairs(AccentTracker.Static) do
         if elem and elem.Parent then
             TweenService:Create(elem, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
         end
     end
-    
     for _, toggle in ipairs(AccentTracker.Toggles) do
         if toggle.isOn then
             TweenService:Create(toggle.btn, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
         end
     end
-    
     for _, tabData in pairs(AccentTracker.Tabs) do
         if tabData.isActive then
             TweenService:Create(tabData.btn, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
@@ -108,14 +106,13 @@ local function SetAccent(color)
     end
 end
 
--- Apply loaded accent
 if Config.AccentColor then
     local c = Config.AccentColor
     SetAccent(Color3.fromRGB(c[1], c[2], c[3]))
 end
 
 --------------------------------------------------
--- SOUND SYSTEM
+-- SOUND
 --------------------------------------------------
 local ClickSound = Instance.new("Sound")
 ClickSound.SoundId = "rbxassetid://6895056283"
@@ -151,7 +148,7 @@ local function MakeDraggable(frame)
 end
 
 --------------------------------------------------
--- NOTIFICATION SYSTEM
+-- NOTIFICATIONS
 --------------------------------------------------
 local NotifyGui = Instance.new("ScreenGui")
 NotifyGui.Name = "SSSNotify"
@@ -180,7 +177,7 @@ local function notify(title, text, notifType)
     local iconText = "🛡"
     if notifType == "warning" then iconColor = Theme.Warning; iconText = "⚠"
     elseif notifType == "error" then iconColor = Theme.Error; iconText = "✕"
-    elseif notifType == "info" then iconColor = Theme.Accent; iconText = "ℹ" end
+    elseif notifType == "info" then iconColor = CurrentAccent; iconText = "ℹ" end
 
     local notif = Instance.new("Frame")
     notif.Size = UDim2.new(0, 280, 0, 70)
@@ -953,8 +950,8 @@ Header.BackgroundTransparency = 1
 Header.Parent = Main
 
 local Logo = Instance.new("Frame")
-Logo.Size = UDim2.new(0, 28, 0, 28)
-Logo.Position = UDim2.new(0, 15, 0.5, -14)
+Logo.Size = UDim2.new(0, 26, 0, 26)
+Logo.Position = UDim2.new(0, 15, 0.5, -13)
 Logo.BackgroundColor3 = Theme.Accent
 Logo.Parent = Header
 
@@ -967,30 +964,30 @@ LogoIcon.Size = UDim2.new(1, 0, 1, 0)
 LogoIcon.BackgroundTransparency = 1
 LogoIcon.Text = "⚡"
 LogoIcon.TextColor3 = Color3.fromRGB(255, 255, 255)
-LogoIcon.TextSize = 15
+LogoIcon.TextSize = 14
 LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = Logo
 
 table.insert(AccentTracker.Static, Logo)
 
 local TitleLbl = Instance.new("TextLabel")
-TitleLbl.Size = UDim2.new(0, 150, 0, 18)
-TitleLbl.Position = UDim2.new(0, 52, 0, 8)
+TitleLbl.Size = UDim2.new(0, 150, 0, 16)
+TitleLbl.Position = UDim2.new(0, 50, 0, 10)
 TitleLbl.BackgroundTransparency = 1
 TitleLbl.Text = "SSS HUB STEAL"
 TitleLbl.TextColor3 = Theme.Text
-TitleLbl.TextSize = 13
+TitleLbl.TextSize = 11
 TitleLbl.Font = Enum.Font.GothamBold
 TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 TitleLbl.Parent = Header
 
 local SubTitleLbl = Instance.new("TextLabel")
 SubTitleLbl.Size = UDim2.new(0, 200, 0, 12)
-SubTitleLbl.Position = UDim2.new(0, 52, 0, 26)
+SubTitleLbl.Position = UDim2.new(0, 50, 0, 27)
 SubTitleLbl.BackgroundTransparency = 1
 SubTitleLbl.Text = "Game Enhancement"
 SubTitleLbl.TextColor3 = Theme.TextDark
-SubTitleLbl.TextSize = 9
+SubTitleLbl.TextSize = 8
 SubTitleLbl.Font = Enum.Font.Gotham
 SubTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 SubTitleLbl.Parent = Header
@@ -1046,20 +1043,20 @@ local CurrentActivePage = nil
 local function switchTab(tabName)
     for name, page in pairs(Pages) do
         if name == tabName then
-            page.Position = UDim2.new(0, 165, 0, 55)
             page.Visible = true
-            TweenService:Create(page, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(0, 135, 0, 55)}):Play()
+            page.GroupTransparency = 1
+            TweenService:Create(page, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {GroupTransparency = 0}):Play()
             CurrentActivePage = page
         else
             if page.Visible then
-                TweenService:Create(page, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0, 105, 0, 55)}):Play()
-                task.delay(0.2, function() page.Visible = false end)
+                TweenService:Create(page, TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {GroupTransparency = 1}):Play()
+                task.delay(0.15, function() page.Visible = false end)
             end
         end
     end
     for name, data in pairs(TabButtons) do
         if name == tabName then
-            TweenService:Create(data.btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Accent}):Play()
+            TweenService:Create(data.btn, TweenInfo.new(0.2), {BackgroundColor3 = CurrentAccent}):Play()
             data.btn.TextColor3 = Color3.fromRGB(255, 255, 255)
             data.isActive = true
         else
@@ -1072,7 +1069,7 @@ end
 
 local function CreateTab(text, icon)
     local TabBtn = Instance.new("TextButton")
-    TabBtn.Size = UDim2.new(0.9, 0, 0, 32)
+    TabBtn.Size = UDim2.new(0.9, 0, 0, 30)
     TabBtn.BackgroundColor3 = Theme.Sidebar
     TabBtn.BorderSizePixel = 0
     TabBtn.Text = "  " .. icon .. "  " .. text
@@ -1085,31 +1082,6 @@ local function CreateTab(text, icon)
     local TabCorner = Instance.new("UICorner")
     TabCorner.CornerRadius = UDim.new(0, 6)
     TabCorner.Parent = TabBtn
-
-    local sep = Instance.new("Frame")
-    sep.Size = UDim2.new(0.8, 0, 0, 1)
-    sep.BackgroundTransparency = 0.5
-    sep.BackgroundColor3 = Theme.Stroke
-    sep.BorderSizePixel = 0
-    sep.Parent = Sidebar
-
-    local Page = Instance.new("ScrollingFrame")
-    Page.Size = UDim2.new(1, -150, 1, -60)
-    Page.Position = UDim2.new(0, 135, 0, 55)
-    Page.BackgroundTransparency = 1
-    Page.BorderSizePixel = 0
-    Page.ScrollBarThickness = 2
-    Page.ScrollBarImageColor3 = Theme.Stroke
-    Page.Visible = false
-    Page.Parent = Main
-
-    local PageLayout = Instance.new("UIListLayout")
-    PageLayout.FillDirection = Enum.FillDirection.Vertical
-    PageLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    PageLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-    PageLayout.Padding = UDim.new(0, 8)
-    PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    PageLayout.Parent = Page
 
     TabBtn.MouseButton1Click:Connect(function()
         playClick()
@@ -1127,12 +1099,41 @@ local function CreateTab(text, icon)
         end
     end)
 
+    local Page = Instance.new("ScrollingFrame")
+    Page.Size = UDim2.new(1, -150, 1, -60)
+    Page.Position = UDim2.new(0, 135, 0, 55)
+    Page.BackgroundTransparency = 1
+    Page.BorderSizePixel = 0
+    Page.ScrollBarThickness = 2
+    Page.ScrollBarImageColor3 = Theme.Stroke
+    Page.Visible = false
+    Page.Parent = Main
+
+    -- Make it a CanvasGroup for fade animation
+    Page.GroupTransparency = 1
+
+    local PageLayout = Instance.new("UIListLayout")
+    PageLayout.FillDirection = Enum.FillDirection.Vertical
+    PageLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    PageLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    PageLayout.Padding = UDim.new(0, 8)
+    PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    PageLayout.Parent = Page
+
     Pages[text] = Page
     TabButtons[text] = {btn = TabBtn, isActive = false}
     AccentTracker.Tabs[text] = TabButtons[text]
 
     return Page
 end
+
+-- One separator after all tabs
+local TabSeparator = Instance.new("Frame")
+TabSeparator.Size = UDim2.new(0.8, 0, 0, 1)
+TabSeparator.BackgroundTransparency = 0.5
+TabSeparator.BackgroundColor3 = Theme.Stroke
+TabSeparator.BorderSizePixel = 0
+TabSeparator.Parent = Sidebar
 
 -- Hover Function
 local function AddHover(btn)
@@ -1177,7 +1178,7 @@ local function CreateKeybindButton(parent, name, defaultKey, callback)
         if isListeningKeybind then return end
         isListeningKeybind = true
         keyBtn.Text = "..."
-        keyBtn.BackgroundColor3 = Theme.Accent
+        keyBtn.BackgroundColor3 = CurrentAccent
 
         local conn
         conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -1204,7 +1205,6 @@ local function CreateKeybindButton(parent, name, defaultKey, callback)
         end)
     end)
 
-    -- Apply keybind
     if currentKey then
         UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed or isListeningKeybind then return end
@@ -1294,7 +1294,6 @@ local function CreateToggle(parent, text, callback, layoutOrder, defaultKeybind)
         setToggleState(not state)
     end)
 
-    -- Keybind button
     if defaultKeybind then
         CreateKeybindButton(Container, text, defaultKeybind, function()
             playClick()
@@ -1302,7 +1301,6 @@ local function CreateToggle(parent, text, callback, layoutOrder, defaultKeybind)
         end)
     end
 
-    -- Load from config
     if Config[text] == true then
         task.spawn(function()
             task.wait(0.1)
@@ -1339,7 +1337,6 @@ local function CreateButton(parent, text, callback, layoutOrder, defaultKeybind)
         callback()
     end)
 
-    -- Keybind button
     if defaultKeybind then
         CreateKeybindButton(btn, text, defaultKeybind, function()
             playClick()
@@ -1462,8 +1459,80 @@ CreateToggle(CombatPage, "Auto Lock Base", function(state)
 end, 2)
 
 --------------------------------------------------
--- SETTINGS PAGE (ACCENT COLOR)
+-- SETTINGS PAGE
 --------------------------------------------------
+-- Save Config Toggle
+local SaveConfigContainer = Instance.new("Frame")
+SaveConfigContainer.Size = UDim2.new(1, -10, 0, 38)
+SaveConfigContainer.BackgroundColor3 = Theme.Card
+SaveConfigContainer.BorderSizePixel = 0
+SaveConfigContainer.LayoutOrder = 1
+SaveConfigContainer.Parent = SettingsPage
+
+local SaveConfigCorner = Instance.new("UICorner")
+SaveConfigCorner.CornerRadius = UDim.new(0, 8)
+SaveConfigCorner.Parent = SaveConfigContainer
+
+local SaveConfigStroke = Instance.new("UIStroke")
+SaveConfigStroke.Color = Theme.Stroke
+SaveConfigStroke.Thickness = 1
+SaveConfigStroke.Parent = SaveConfigContainer
+
+local SaveConfigLabel = Instance.new("TextLabel")
+SaveConfigLabel.Size = UDim2.new(1, -65, 1, 0)
+SaveConfigLabel.Position = UDim2.new(0, 12, 0, 0)
+SaveConfigLabel.BackgroundTransparency = 1
+SaveConfigLabel.Text = "Save Config"
+SaveConfigLabel.TextColor3 = Theme.Text
+SaveConfigLabel.TextSize = 12
+SaveConfigLabel.Font = Enum.Font.GothamBold
+SaveConfigLabel.TextXAlignment = Enum.TextXAlignment.Left
+SaveConfigLabel.Parent = SaveConfigContainer
+
+local SaveConfigToggleBtn = Instance.new("TextButton")
+SaveConfigToggleBtn.Size = UDim2.new(0, 38, 0, 19)
+SaveConfigToggleBtn.Position = UDim2.new(1, -48, 0.5, -10)
+SaveConfigToggleBtn.BackgroundColor3 = SaveConfigEnabled and Theme.ToggleOn or Theme.ToggleOff
+SaveConfigToggleBtn.BorderSizePixel = 0
+SaveConfigToggleBtn.Text = ""
+SaveConfigToggleBtn.Parent = SaveConfigContainer
+
+local SaveConfigToggleCorner = Instance.new("UICorner")
+SaveConfigToggleCorner.CornerRadius = UDim.new(1, 0)
+SaveConfigToggleCorner.Parent = SaveConfigToggleBtn
+
+local SaveConfigCircle = Instance.new("Frame")
+SaveConfigCircle.Size = UDim2.new(0, 15, 0, 15)
+SaveConfigCircle.Position = SaveConfigEnabled and UDim2.new(1, -17, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+SaveConfigCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SaveConfigCircle.BorderSizePixel = 0
+SaveConfigCircle.Parent = SaveConfigToggleBtn
+
+local SaveConfigCircleCorner = Instance.new("UICorner")
+SaveConfigCircleCorner.CornerRadius = UDim.new(1, 0)
+SaveConfigCircleCorner.Parent = SaveConfigCircle
+
+local saveConfigToggleData = {btn = SaveConfigToggleBtn, isOn = SaveConfigEnabled}
+table.insert(AccentTracker.Toggles, saveConfigToggleData)
+
+SaveConfigToggleBtn.MouseButton1Click:Connect(function()
+    playClick()
+    SaveConfigEnabled = not SaveConfigEnabled
+    Config.SaveConfigEnabled = SaveConfigEnabled
+    SaveConfig()
+    saveConfigToggleData.isOn = SaveConfigEnabled
+    if SaveConfigEnabled then
+        TweenService:Create(SaveConfigToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOn}):Play()
+        TweenService:Create(SaveConfigCircle, TweenInfo.new(0.2), {Position = UDim2.new(1, -17, 0.5, -8)}):Play()
+        notify("Config", "Auto-save enabled", "success")
+    else
+        TweenService:Create(SaveConfigToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOff}):Play()
+        TweenService:Create(SaveConfigCircle, TweenInfo.new(0.2), {Position = UDim2.new(0, 2, 0.5, -8)}):Play()
+        notify("Config", "Auto-save disabled", "warning")
+    end
+end)
+
+-- Accent Color Section
 local ColorLabel = Instance.new("TextLabel")
 ColorLabel.Size = UDim2.new(1, -10, 0, 20)
 ColorLabel.BackgroundTransparency = 1
@@ -1472,13 +1541,13 @@ ColorLabel.TextColor3 = Theme.Text
 ColorLabel.TextSize = 12
 ColorLabel.Font = Enum.Font.GothamBold
 ColorLabel.TextXAlignment = Enum.TextXAlignment.Left
-ColorLabel.LayoutOrder = 1
+ColorLabel.LayoutOrder = 2
 ColorLabel.Parent = SettingsPage
 
 local ColorContainer = Instance.new("Frame")
 ColorContainer.Size = UDim2.new(1, -10, 0, 40)
 ColorContainer.BackgroundTransparency = 1
-ColorContainer.LayoutOrder = 2
+ColorContainer.LayoutOrder = 3
 ColorContainer.Parent = SettingsPage
 
 local ColorLayout = Instance.new("UIListLayout")
@@ -1512,20 +1581,34 @@ for _, preset in ipairs(ColorPresets) do
     swatchCorner.Parent = swatch
 
     local swatchStroke = Instance.new("UIStroke")
-    swatchStroke.Color = Theme.Stroke
-    swatchStroke.Thickness = 1.5
+    swatchStroke.Color = Color3.fromRGB(255, 255, 255)
+    swatchStroke.Thickness = 0
     swatchStroke.Parent = swatch
 
     AddHover(swatch)
 
+    -- Highlight if this is the current accent
+    if CurrentAccent == preset.color then
+        swatchStroke.Thickness = 2
+        SelectedColorSwatch = swatch
+    end
+
     swatch.MouseButton1Click:Connect(function()
         playClick()
+        -- Remove highlight from previous
+        if SelectedColorSwatch then
+            SelectedColorSwatch:FindFirstChildOfClass("UIStroke").Thickness = 0
+        end
+        -- Add highlight to new
+        swatchStroke.Thickness = 2
+        SelectedColorSwatch = swatch
+        
         SetAccent(preset.color)
         notify("Accent Color", preset.name, "success")
     end)
 end
 
--- Settings info
+-- Info text
 local InfoLabel = Instance.new("TextLabel")
 InfoLabel.Size = UDim2.new(1, -10, 0, 40)
 InfoLabel.BackgroundTransparency = 1
@@ -1535,36 +1618,164 @@ InfoLabel.TextSize = 10
 InfoLabel.Font = Enum.Font.Gotham
 InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
 InfoLabel.TextWrapped = true
-InfoLabel.LayoutOrder = 3
+InfoLabel.LayoutOrder = 4
 InfoLabel.Parent = SettingsPage
 
 --------------------------------------------------
--- CREATE POPUP MENUS
+-- BYPASS MENU (FIXED - direct element creation)
 --------------------------------------------------
-BypassMenu = CreatePopupMenu("BYPASS", 200, 180)
+BypassMenu = CreatePopupMenu("BYPASS", 200, 200)
 
-local BypassToggle = CreateToggle(BypassMenu, "Wall Hop", function(state)
-    wallHopEnabled = state
-    notify("Wall Hop", state and "Enabled" or "Disabled", "info")
+-- Wall Hop Toggle (direct creation, not using CreateToggle)
+local WallHopContainer = Instance.new("Frame")
+WallHopContainer.Size = UDim2.new(0, 180, 0, 35)
+WallHopContainer.Position = UDim2.new(0, 10, 0, 35)
+WallHopContainer.BackgroundColor3 = Theme.Background
+WallHopContainer.BorderSizePixel = 0
+WallHopContainer.ZIndex = 21
+WallHopContainer.Parent = BypassMenu
+
+local WallHopCorner = Instance.new("UICorner")
+WallHopCorner.CornerRadius = UDim.new(0, 6)
+WallHopCorner.Parent = WallHopContainer
+
+local WallHopLabel = Instance.new("TextLabel")
+WallHopLabel.Size = UDim2.new(1, -50, 1, 0)
+WallHopLabel.Position = UDim2.new(0, 10, 0, 0)
+WallHopLabel.BackgroundTransparency = 1
+WallHopLabel.Text = "Wall Hop"
+WallHopLabel.TextColor3 = Theme.Text
+WallHopLabel.TextSize = 11
+WallHopLabel.Font = Enum.Font.GothamBold
+WallHopLabel.TextXAlignment = Enum.TextXAlignment.Left
+WallHopLabel.ZIndex = 22
+WallHopLabel.Parent = WallHopContainer
+
+local WallHopToggleBtn = Instance.new("TextButton")
+WallHopToggleBtn.Size = UDim2.new(0, 38, 0, 19)
+WallHopToggleBtn.Position = UDim2.new(1, -44, 0.5, -10)
+WallHopToggleBtn.BackgroundColor3 = Theme.ToggleOff
+WallHopToggleBtn.BorderSizePixel = 0
+WallHopToggleBtn.Text = ""
+WallHopToggleBtn.ZIndex = 22
+WallHopToggleBtn.Parent = WallHopContainer
+
+local WallHopToggleCorner = Instance.new("UICorner")
+WallHopToggleCorner.CornerRadius = UDim.new(1, 0)
+WallHopToggleCorner.Parent = WallHopToggleBtn
+
+local WallHopCircle = Instance.new("Frame")
+WallHopCircle.Size = UDim2.new(0, 15, 0, 15)
+WallHopCircle.Position = UDim2.new(0, 2, 0.5, -8)
+WallHopCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+WallHopCircle.BorderSizePixel = 0
+WallHopCircle.ZIndex = 23
+WallHopCircle.Parent = WallHopToggleBtn
+
+local WallHopCircleCorner = Instance.new("UICorner")
+WallHopCircleCorner.CornerRadius = UDim.new(1, 0)
+WallHopCircleCorner.Parent = WallHopCircle
+
+local wallHopState = false
+local wallHopToggleData = {btn = WallHopToggleBtn, isOn = false}
+table.insert(AccentTracker.Toggles, wallHopToggleData)
+
+WallHopToggleBtn.MouseButton1Click:Connect(function()
+    playClick()
+    wallHopState = not wallHopState
+    wallHopEnabled = wallHopState
+    wallHopToggleData.isOn = wallHopState
+    Config["Wall Hop"] = wallHopState
+    SaveConfig()
+    if wallHopState then
+        TweenService:Create(WallHopToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOn}):Play()
+        TweenService:Create(WallHopCircle, TweenInfo.new(0.2), {Position = UDim2.new(1, -17, 0.5, -8)}):Play()
+    else
+        TweenService:Create(WallHopToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOff}):Play()
+        TweenService:Create(WallHopCircle, TweenInfo.new(0.2), {Position = UDim2.new(0, 2, 0.5, -8)}):Play()
+    end
+    notify("Wall Hop", wallHopState and "Enabled" or "Disabled", "info")
 end)
-BypassToggle.Position = UDim2.new(0, 10, 0, 35)
-BypassToggle.Size = UDim2.new(1, -20, 0, 35)
 
-local EnterBaseBtn = CreateButton(BypassMenu, "Enter Base", function()
+-- Load Wall Hop from config
+if Config["Wall Hop"] == true then
+    task.spawn(function()
+        task.wait(0.2)
+        wallHopState = true
+        wallHopEnabled = true
+        wallHopToggleData.isOn = true
+        TweenService:Create(WallHopToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOn}):Play()
+        TweenService:Create(WallHopCircle, TweenInfo.new(0.2), {Position = UDim2.new(1, -17, 0.5, -8)}):Play()
+    end)
+end
+
+-- Enter Base button (direct creation)
+local EnterBaseBtn = Instance.new("TextButton")
+EnterBaseBtn.Size = UDim2.new(0, 180, 0, 30)
+EnterBaseBtn.Position = UDim2.new(0, 10, 0, 80)
+EnterBaseBtn.BackgroundColor3 = Theme.Background
+EnterBaseBtn.BorderSizePixel = 0
+EnterBaseBtn.Text = "Enter Base"
+EnterBaseBtn.TextColor3 = Theme.Text
+EnterBaseBtn.TextSize = 11
+EnterBaseBtn.Font = Enum.Font.GothamBold
+EnterBaseBtn.ZIndex = 21
+EnterBaseBtn.Parent = BypassMenu
+
+local EnterBaseCorner = Instance.new("UICorner")
+EnterBaseCorner.CornerRadius = UDim.new(0, 6)
+EnterBaseCorner.Parent = EnterBaseBtn
+
+AddHover(EnterBaseBtn)
+
+EnterBaseBtn.MouseButton1Click:Connect(function()
+    playClick()
     smoothVerticalMove(DOWN_DISTANCE, -1)
     notify("Enter Base", "Moving down", "info")
-end, nil, "Q")
-EnterBaseBtn.Position = UDim2.new(0, 10, 0, 75)
-EnterBaseBtn.Size = UDim2.new(1, -20, 0, 30)
+end)
 
-local ExitBaseBtn = CreateButton(BypassMenu, "Exit Base", function()
+-- Exit Base button (direct creation)
+local ExitBaseBtn = Instance.new("TextButton")
+ExitBaseBtn.Size = UDim2.new(0, 180, 0, 30)
+ExitBaseBtn.Position = UDim2.new(0, 10, 0, 120)
+ExitBaseBtn.BackgroundColor3 = Theme.Background
+ExitBaseBtn.BorderSizePixel = 0
+ExitBaseBtn.Text = "Exit Base"
+ExitBaseBtn.TextColor3 = Theme.Text
+ExitBaseBtn.TextSize = 11
+ExitBaseBtn.Font = Enum.Font.GothamBold
+ExitBaseBtn.ZIndex = 21
+ExitBaseBtn.Parent = BypassMenu
+
+local ExitBaseCorner = Instance.new("UICorner")
+ExitBaseCorner.CornerRadius = UDim.new(0, 6)
+ExitBaseCorner.Parent = ExitBaseBtn
+
+AddHover(ExitBaseBtn)
+
+ExitBaseBtn.MouseButton1Click:Connect(function()
+    playClick()
     smoothVerticalMove(UP_DISTANCE, 1)
     notify("Exit Base", "Moving up", "info")
-end, nil, "R")
-ExitBaseBtn.Position = UDim2.new(0, 10, 0, 110)
-ExitBaseBtn.Size = UDim2.new(1, -20, 0, 30)
+end)
 
-PetFilterMenu = CreatePopupMenu("PET FILTERS", 240, 150)
+-- Keybinds for Bypass
+CreateKeybindButton(EnterBaseBtn, "Enter Base", "Q", function()
+    playClick()
+    smoothVerticalMove(DOWN_DISTANCE, -1)
+    notify("Enter Base", "Moving down", "info")
+end)
+
+CreateKeybindButton(ExitBaseBtn, "Exit Base", "R", function()
+    playClick()
+    smoothVerticalMove(UP_DISTANCE, 1)
+    notify("Exit Base", "Moving up", "info")
+end)
+
+--------------------------------------------------
+-- PET FILTER MENU (COLORED BUTTONS)
+--------------------------------------------------
+PetFilterMenu = CreatePopupMenu("PET FILTERS", 240, 160)
 
 local filterNameLbl = Instance.new("TextLabel")
 filterNameLbl.Size = UDim2.new(0.4, 0, 0, 18)
@@ -1634,7 +1845,27 @@ mpsBoxStroke.Color = Theme.Stroke
 mpsBoxStroke.Thickness = 1
 mpsBoxStroke.Parent = mpsBox
 
-local applyBtn = CreateButton(PetFilterMenu, "APPLY", function()
+-- APPLY button - GREEN
+local applyBtn = Instance.new("TextButton")
+applyBtn.Size = UDim2.new(0, 95, 0, 28)
+applyBtn.Position = UDim2.new(0.05, 5, 0, 105)
+applyBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 60)
+applyBtn.BorderSizePixel = 0
+applyBtn.Text = "APPLY"
+applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+applyBtn.TextSize = 10
+applyBtn.Font = Enum.Font.GothamBold
+applyBtn.ZIndex = 21
+applyBtn.Parent = PetFilterMenu
+
+local applyCorner = Instance.new("UICorner")
+applyCorner.CornerRadius = UDim.new(0, 6)
+applyCorner.Parent = applyBtn
+
+AddHover(applyBtn)
+
+applyBtn.MouseButton1Click:Connect(function()
+    playClick()
     petFilterName = nameBox.Text
     local inputText = mpsBox.Text:lower()
     local mult = 1
@@ -1647,20 +1878,34 @@ local applyBtn = CreateButton(PetFilterMenu, "APPLY", function()
     PetFilterMenu.Visible = false
     notify("Pet Filter", "Applied successfully", "success")
 end)
-applyBtn.Position = UDim2.new(0.1, 5, 0, 100)
-applyBtn.Size = UDim2.new(0.35, -5, 0, 28)
-applyBtn.ZIndex = 21
 
-local clearBtn = CreateButton(PetFilterMenu, "CLEAR", function()
+-- CLEAR button - RED
+local clearBtn = Instance.new("TextButton")
+clearBtn.Size = UDim2.new(0, 95, 0, 28)
+clearBtn.Position = UDim2.new(0.55, 0, 0, 105)
+clearBtn.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
+clearBtn.BorderSizePixel = 0
+clearBtn.Text = "CLEAR"
+clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+clearBtn.TextSize = 10
+clearBtn.Font = Enum.Font.GothamBold
+clearBtn.ZIndex = 21
+clearBtn.Parent = PetFilterMenu
+
+local clearCorner = Instance.new("UICorner")
+clearCorner.CornerRadius = UDim.new(0, 6)
+clearCorner.Parent = clearBtn
+
+AddHover(clearBtn)
+
+clearBtn.MouseButton1Click:Connect(function()
+    playClick()
     nameBox.Text = ""
     mpsBox.Text = "0"
     petFilterName = ""
     petFilterMPS = 0
     notify("Pet Filter", "Cleared", "info")
 end)
-clearBtn.Position = UDim2.new(0.55, 0, 0, 100)
-clearBtn.Size = UDim2.new(0.35, -5, 0, 28)
-clearBtn.ZIndex = 21
 
 --------------------------------------------------
 -- SERVER PAGE
