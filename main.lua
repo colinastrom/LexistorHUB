@@ -232,11 +232,11 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (CLEAN + FILTER)
+-- PETS ESP (CLEAN + FILTER + FIXED PARSER)
 --------------------------------------------------
 local espTracker = {}
-local petFilterName = "" -- Фильтр по имени (пусто = все)
-local petFilterMPS = 0   -- Фильтр по MPS (0 = все)
+local petFilterName = "" 
+local petFilterMPS = 0
 
 local function removePetESP(pet)
     local esp = espTracker[pet]
@@ -263,16 +263,20 @@ local function getPetMPS(pet)
     return "?"
 end
 
+-- Новый парсер: понимает 1m, 1000000, 1.5M, $7.3m/s
 local function getPetMPSValue(pet)
     local mpsText = getPetMPS(pet)
-    -- Извлекаем число из текста типа "$7.3m/s" -> 7300000
-    local num = mpsText:gsub("[%$%,%/s]", "")
-    local mult = 1
-    if mpsText:lower():find("k") then mult = 1000 end
-    if mpsText:lower():find("m") then mult = 1000000 end
-    if mpsText:lower():find("b") then mult = 1000000000 end
+    local lowerText = mpsText:lower()
     
-    local val = tonumber(num)
+    local mult = 1
+    if lowerText:find("k") then mult = 1000
+    elseif lowerText:find("m") then mult = 1000000
+    elseif lowerText:find("b") then mult = 1000000000 end
+    
+    -- Извлекаем только цифры и точку
+    local numStr = mpsText:gsub("[^%d%.]", "")
+    local val = tonumber(numStr)
+    
     if val then return val * mult end
     return 0
 end
@@ -292,7 +296,6 @@ local function getPetMutation(pet)
     return nil
 end
 
--- Проверка фильтра
 local function passesFilter(pet)
     local name = getPetName(pet):lower()
     local mps = getPetMPSValue(pet)
@@ -392,7 +395,6 @@ local function createPetESP(pet)
     highlight.Parent = pet
     
     local function updateESP()
-        -- Проверка фильтра
         if not passesFilter(pet) then
             billboard.Enabled = false
             highlight.Enabled = false
@@ -1023,7 +1025,23 @@ end)
 
 applyBtn.MouseButton1Click:Connect(function()
     petFilterName = nameBox.Text
-    petFilterMPS = tonumber(mpsBox.Text) or 0
+    
+    -- Парсим ввод MPS (понимает 1m, 1000000, 1.5M)
+    local inputText = mpsBox.Text:lower()
+    local mult = 1
+    if inputText:find("k") then mult = 1000
+    elseif inputText:find("m") then mult = 1000000
+    elseif inputText:find("b") then mult = 1000000000 end
+    
+    local numStr = inputText:gsub("[^%d%.]", "")
+    local val = tonumber(numStr)
+    
+    if val then
+        petFilterMPS = val * mult
+    else
+        petFilterMPS = 0
+    end
+    
     PetFilterMenu.Visible = false
 end)
 
@@ -1150,7 +1168,7 @@ WallHopButton.MouseButton1Click:Connect(function()
 end)
 
 --------------------------------------------------
--- ENTER / EXIT BASE (PHYSICS DROP)
+-- ENTER / EXIT BASE (CFRAME + NO COLLIDE)
 --------------------------------------------------
 local baseDebounce = false
 
@@ -1166,36 +1184,30 @@ local function smoothVerticalMove(distance, direction)
         local originalCollide = rootPart.CanCollide
         pcall(function() rootPart.CanCollide = false end)
         
-        -- Создаём BodyVelocity для физического движения
-        local bv = Instance.new("BodyVelocity")
-        bv.MaxForce = Vector3.new(0, math.huge, 0)
-        -- Скорость: 60 вниз, 40 вверх (плавно но быстро)
-        bv.Velocity = Vector3.new(0, direction * 50, 0)
-        bv.Parent = rootPart
+        -- Микро-шаги через CFrame (быстро и плавно)
+        local steps = math.abs(distance) * 4 -- 0.25 стада за шаг
+        local stepSize = (distance / steps) * direction
         
-        local startTime = tick()
-        local duration = distance / 50 -- Время = расстояние / скорость
-        
-        -- Летим пока не достигнем цели
-        while rootPart and tick() - startTime < duration do
-            task.wait(0.01)
+        for i = 1, steps do
+            if not rootPart then break end
+            rootPart.CFrame = rootPart.CFrame + Vector3.new(0, stepSize, 0)
+            task.wait(0.005) -- Очень быстро
         end
         
-        -- Останавливаемся
-        if bv then bv:Destroy() end
-        
-        -- Возвращаем коллизию
+        -- Точная финальная позиция
         if rootPart then
-            pcall(function() rootPart.CanCollide = originalCollide end)
-            -- Точная финальная позиция
             rootPart.CFrame = CFrame.new(
                 rootPart.Position.X,
                 targetY,
                 rootPart.Position.Z
             ) * CFrame.Angles(0, math.rad(rootPart.Orientation.Y), 0)
+            
+            -- Возвращаем коллизию
+            pcall(function() rootPart.CanCollide = originalCollide end)
         end
         
-        task.wait(0.5)
+        -- Минимальный кулдаун чтобы не спамить
+        task.wait(0.2)
         baseDebounce = false
     end)
 end
@@ -1207,7 +1219,6 @@ end)
 ExitBase.MouseButton1Click:Connect(function()
     smoothVerticalMove(UP_DISTANCE, 1)
 end)
-
 --------------------------------------------------
 -- SERVER PAGE
 --------------------------------------------------
