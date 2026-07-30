@@ -229,13 +229,12 @@ local petMathModule = nil
 
 local function getPetMath()
     if petMathModule then return petMathModule end
-    local paths = {
-        ReplicatedStorage:FindFirstChild("Modules"),
-        ReplicatedStorage:FindFirstChild("Shared"),
-    }
-    for _, path in ipairs(paths) do
-        if path then
-            local mod = path:FindFirstChild("PetMath")
+    
+    local shared = ReplicatedStorage:FindFirstChild("Shared")
+    if shared then
+        local services = shared:FindFirstChild("Services")
+        if services then
+            local mod = services:FindFirstChild("PetMath")
             if mod then
                 local success, result = pcall(function()
                     return require(mod)
@@ -253,39 +252,14 @@ end
 local function getPetInfo(pet)
     local species = pet:GetAttribute("Species") or pet.Name
     local mutation = pet:GetAttribute("Mutation")
+    local level = pet:GetAttribute("Level") or 1
     local mps = nil
 
-    -- Пытаемся вычислить MPS через PetMath
     local petMath = getPetMath()
-    if petMath then
+    if petMath and petMath.mps then
         pcall(function()
-            if type(petMath.mps) == "function" then
-                mps = petMath.mps(pet)
-            elseif type(petMath.Mps) == "function" then
-                mps = petMath.Mps(pet)
-            elseif type(petMath.GetMPS) == "function" then
-                mps = petMath.GetMPS(pet)
-            end
+            mps = petMath.mps(species, level, mutation)
         end)
-    end
-
-    -- Фолбэк: ищем #MPS в шаблоне
-    if not mps then
-        local petsFolder = ReplicatedStorage:FindFirstChild("Pets")
-        if petsFolder then
-            local template = petsFolder:FindFirstChild(species)
-            if template then
-                local tMps = template:FindFirstChild("#MPS")
-                if tMps and tMps:IsA("ValueBase") then
-                    mps = tMps.Value
-                end
-                if not mps then
-                    pcall(function()
-                        mps = template:GetAttribute("#MPS")
-                    end)
-                end
-            end
-        end
     end
 
     return species, mutation, mps
@@ -595,7 +569,7 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (velocity + CFrame boost)
+-- WALL HOP (SMOOTH UPWARD)
 --------------------------------------------------
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
@@ -619,31 +593,20 @@ RunService.Heartbeat:Connect(function()
         wallHopLastTrigger = currentTime
         isWallHopping = true
 
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-
         task.spawn(function()
-            task.wait(0.03)
-            local vel = rootPart.AssemblyLinearVelocity
-            rootPart.AssemblyLinearVelocity = Vector3.new(vel.X, 50, vel.Z)
-
-            task.wait(0.04)
-            for i = 1, 5 do
+            -- Плавный полёт вверх без рывков и без вперёд
+            for i = 1, 30 do
                 if not rootPart then break end
-                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 1.2, 0)
-                task.wait(0.015)
+                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 1, 0)
+                task.wait(0.02)
             end
-
-            if rootPart then
-                rootPart.CFrame = rootPart.CFrame + forwardDirection * 3
-            end
-
-            task.wait(0.4)
+            
+            task.wait(0.3)
             isWallHopping = false
             wallHopDebounce = false
         end)
     end
 end)
-
 --------------------------------------------------
 -- ANTI FALL CIRCLE
 --------------------------------------------------
