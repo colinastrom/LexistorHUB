@@ -626,82 +626,70 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (LIFT PLATFORM)
+-- WALL HOP (STEALTH)
 --------------------------------------------------
+
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
-local activeLift = nil
 
 RunService.Heartbeat:Connect(function()
-    if not wallHopEnabled or not rootPart or not humanoid then return end
-    if wallHopDebounce then return end
 
+    if not wallHopEnabled
+    or not rootPart
+    or not humanoid then
+        return
+    end
+
+    if wallHopDebounce then
+        return
+    end
+
+    -- Cooldown to avoid spamming
     local currentTime = tick()
-    if currentTime - wallHopLastTrigger < 0.8 then return end
+    if currentTime - wallHopLastTrigger < 0.4 then
+        return
+    end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
+    -- Only check forward direction (less suspicious than omnidirectional)
     local forwardDirection = rootPart.CFrame.LookVector
-    local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
+
+    local result = workspace:Raycast(
+        rootPart.Position,
+        forwardDirection * 2.5,
+        rayParams
+    )
 
     if result then
         wallHopDebounce = true
         wallHopLastTrigger = currentTime
-        isWallHopping = true
 
-        -- Удаляем старый лифт если есть
-        if activeLift then
-            pcall(function() activeLift:Destroy() end)
-        end
+        -- Use Humanoid state change instead of raw velocity (looks like normal jump)
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 
-        -- Создаём невидимую платформу
-        local platform = Instance.new("Part")
-        platform.Name = "WallHopLift"
-        platform.Size = Vector3.new(6, 0.5, 6)
-        platform.Anchored = true
-        platform.CanCollide = true
-        platform.CanQuery = false
-        platform.CanTouch = false
-        platform.Transparency = 1
-        platform.Material = Enum.Material.Air
-        platform.CFrame = CFrame.new(rootPart.Position.X, rootPart.Position.Y - 3.2, rootPart.Position.Z)
-        platform.Parent = workspace
-        activeLift = platform
-
-        -- Плавно поднимаем платформу
+        -- Small randomized CFrame nudge upward instead of large velocity burst
         task.spawn(function()
-            local startY = platform.CFrame.Y
-            local targetY = startY + 35 -- Высота подъёма
-            local currentY = startY
-            local steps = 60 -- Количество шагов (плавность)
-            local stepSize = (targetY - startY) / steps
+            local hopHeight = math.random(8, 12) / 10
+            local startCFrame = rootPart.CFrame
             
-            for i = 1, steps do
-                if not platform or not platform.Parent then break end
-                if not rootPart then break end
-                
-                currentY = currentY + stepSize
-                platform.CFrame = CFrame.new(rootPart.Position.X, currentY, rootPart.Position.Z)
-                
-                -- Двигаем игрока вместе с платформой
-                rootPart.CFrame = CFrame.new(rootPart.Position.X, currentY + 3.2, rootPart.Position.Z)
-                
-                task.wait(0.03)
+            -- Gentle upward push via CFrame in micro-steps
+            for i = 1, 3 do
+                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, hopHeight, 0)
+                task.wait(0.02)
             end
             
-            -- Удаляем платформу
-            if platform then
-                pcall(function() platform:Destroy() end)
-            end
-            activeLift = nil
+            -- Add slight forward momentum
+            local forwardNudge = forwardDirection * 2
+            rootPart.CFrame = rootPart.CFrame + forwardNudge
             
-            task.wait(0.3)
-            isWallHopping = false
+            task.wait(0.15)
             wallHopDebounce = false
         end)
     end
+
 end)
 --------------------------------------------------
 -- ANTI FALL CIRCLE
