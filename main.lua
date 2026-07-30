@@ -71,17 +71,11 @@ local normalSpeed = 16
 local isWallHopping = false
 
 local ESPs = {}
-local PetESPs = {}
 local AntiFall
 local antiKnockbackConnection
 local autoLockConnection
 local antiAfkConnection
 local antiCheatConnection
-
-local LOCK_STATE_ATTR = "LockState"
-local STATE_IDLE = "Idle"
-local STATE_LOCKED = "Locked"
-local STATE_COOLDOWN = "Cooldown"
 
 --------------------------------------------------
 -- CHARACTER
@@ -223,203 +217,270 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --------------------------------------------------
--- PETS ESP (Species, Mutation, MPS)
+-- PETS ESP (INTEGRATED FROM EXTERNAL SCRIPT)
 --------------------------------------------------
-local petMathModule = nil
+local espTracker = {}
 
-local function getPetMath()
-    if petMathModule then return petMathModule end
-    
-    local shared = ReplicatedStorage:FindFirstChild("Shared")
-    if shared then
-        local services = shared:FindFirstChild("Services")
-        if services then
-            local mod = services:FindFirstChild("PetMath")
-            if mod then
-                local success, result = pcall(function()
-                    return require(mod)
-                end)
-                if success then
-                    petMathModule = result
-                    return result
-                end
-            end
+local function removePetESP(pet)
+    local esp = espTracker[pet]
+    if esp then
+        if esp.billboard then esp.billboard:Destroy() end
+        if esp.highlight then esp.highlight:Destroy() end
+        espTracker[pet] = nil
+    end
+end
+
+local function getPetName(pet)
+    local species = pet:GetAttribute("Species")
+    return species or pet.Name
+end
+
+local function getPetMPS(pet)
+    local tag = pet:FindFirstChild("ItemNameTag", true)
+    if tag then
+        local mpsLabel = tag:FindFirstChild("MPS", true)
+        if mpsLabel and mpsLabel:IsA("TextLabel") and mpsLabel.Text ~= "" then
+            return mpsLabel.Text
         end
+    end
+    return "?"
+end
+
+local function getPetLevel(pet)
+    local tag = pet:FindFirstChild("ItemNameTag", true)
+    if tag then
+        local lvlLabel = tag:FindFirstChild("Level", true)
+        if lvlLabel and lvlLabel:IsA("TextLabel") and lvlLabel.Text ~= "" then
+            return lvlLabel.Text
+        end
+    end
+    return "Level ?"
+end
+
+local function getPetMutation(pet)
+    local tag = pet:FindFirstChild("ItemNameTag", true)
+    if tag then
+        local mutLabel = tag:FindFirstChild("Mutation", true)
+        if mutLabel and mutLabel:IsA("TextLabel") and mutLabel.Text ~= "" and mutLabel.Visible then
+            return mutLabel.Text
+        end
+    end
+    local mutAttr = pet:GetAttribute("Mutation")
+    if mutAttr and mutAttr ~= "" then
+        return mutAttr
     end
     return nil
 end
 
--- Получаем множитель мутации
-local function getMutationMultiplier(mutation)
-    if not mutation or mutation == "None" or mutation == "Normal" or mutation == "" then
-        return 1
-    end
-    
-    local mutationsFolder = ReplicatedStorage:FindFirstChild("Mutations")
-    if mutationsFolder then
-        local mutData = mutationsFolder:FindFirstChild(mutation)
-        if mutData then
-            local mult = mutData:FindFirstChild("Multiplier") or mutData:FindFirstChild("MPSMultiplier")
-            if mult and mult:IsA("ValueBase") then
-                return mult.Value
-            end
-            local attr = mutData:GetAttribute("Multiplier") or mutData:GetAttribute("MPSMultiplier")
-            if attr then return attr end
+local function getOwnerName(pet)
+    local ownerId = pet:GetAttribute("OwnerUserId")
+    if ownerId then
+        local p = Players:GetPlayerByUserId(ownerId)
+        if p then
+            return p.Name
         end
+        return "Player " .. tostring(ownerId)
     end
-    
-    -- Базовые множители если не нашли
-    local defaults = {
-        ["OG"] = 2,
-        ["Celestial"] = 3,
-        ["Galactic"] = 5,
-        ["Mythic"] = 10,
-    }
-    return defaults[mutation] or 1
-end
-
-local function getPetInfo(pet)
-    local species = pet:GetAttribute("Species") or pet.Name
-    local mutation = pet:GetAttribute("Mutation")
-    
-    -- Ищем уровень (атрибут или объект)
-    local level = pet:GetAttribute("Level")
-    if not level then
-        local levelObj = pet:FindFirstChild("Level")
-        if levelObj and levelObj:IsA("ValueBase") then
-            level = levelObj.Value
-        end
-    end
-    level = level or 1
-
-    local mps = nil
-    local petMath = getPetMath()
-    
-    -- Способ 1: PetMath.mps
-    if petMath and petMath.mps then
-        pcall(function()
-            mps = petMath.mps(species, level, mutation)
-        end)
-    end
-    
-    -- Способ 2: Ручной расчёт
-    if not mps then
-        local petsFolder = ReplicatedStorage:FindFirstChild("Pets")
-        if petsFolder then
-            local template = petsFolder:FindFirstChild(species)
-            if template then
-                local mpsObj = template:FindFirstChild("MPS") or template:FindFirstChild("#MPS")
-                if mpsObj and mpsObj:IsA("ValueBase") then
-                    local baseMPS = mpsObj.Value
-                    local levelMult = 1.25 ^ (level - 1)
-                    local mutMult = getMutationMultiplier(mutation)
-                    mps = baseMPS * levelMult * mutMult
-                end
-            end
-        end
-    end
-
-    return species, mutation, mps
-end
-
-local function removePetESP(pet)
-    if PetESPs[pet] then
-        PetESPs[pet]:Destroy()
-        PetESPs[pet] = nil
-    end
+    return "Unknown"
 end
 
 local function createPetESP(pet)
-    removePetESP(pet)
-
-    local folder = Instance.new("Folder")
-    folder.Name = "PetESP"
-    folder.Parent = pet
-
-    local highlight = Instance.new("Highlight")
-    highlight.Adornee = pet
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.FillTransparency = 0.5
-    highlight.OutlineTransparency = 0
-    highlight.FillColor = Color3.fromRGB(255, 180, 50)
-    highlight.OutlineColor = Color3.fromRGB(255, 120, 0)
-    highlight.Enabled = petsEspEnabled
-    highlight.Parent = folder
-
+    local adornPart = nil
+    for _, desc in ipairs(pet:GetDescendants()) do
+        if desc:IsA("MeshPart") or desc:IsA("BasePart") then
+            adornPart = desc
+            break
+        end
+    end
+    if not adornPart then return nil end
+    
     local billboard = Instance.new("BillboardGui")
-    billboard.Name = "PetESP_Name"
-    billboard.Adornee = pet
-    billboard.Size = UDim2.new(0, 140, 0, 60)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Name = "PetESP"
+    billboard.Adornee = adornPart
+    billboard.Size = UDim2.new(0, 250, 0, 80)
     billboard.AlwaysOnTop = true
-    billboard.Enabled = petsEspEnabled
-    billboard.Parent = folder
-
-    local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, 0, 1, 0)
-    text.BackgroundTransparency = 1
-    text.Text = "🐾 " .. pet.Name
-    text.TextColor3 = Color3.fromRGB(255, 200, 50)
-    text.TextStrokeTransparency = 0.5
-    text.TextSize = 11
-    text.Font = Enum.Font.GothamBold
-    text.TextYAlignment = Enum.TextYAlignment.Top
-    text.TextWrapped = true
-    text.Parent = billboard
-
-    PetESPs[pet] = folder
+    billboard.LightInfluence = 0
+    billboard.MaxDistance = 0
+    billboard.ExtentsOffset = Vector3.new(0, 120, 0)
+    billboard.Parent = pet
+    
+    local bg = Instance.new("Frame")
+    bg.Name = "BG"
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    bg.BackgroundTransparency = 0.35
+    bg.BorderSizePixel = 0
+    bg.Parent = billboard
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = bg
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1.5
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = bg
+    
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment = Enum.VerticalAlignment.Top
+    layout.Padding = UDim.new(0, 2)
+    layout.Parent = bg
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "PetName"
+    nameLabel.Size = UDim2.new(1, -8, 0, 22)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = getPetName(pet)
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextScaled = true
+    nameLabel.Parent = bg
+    
+    local levelLabel = Instance.new("TextLabel")
+    levelLabel.Name = "Level"
+    levelLabel.Size = UDim2.new(1, -8, 0, 18)
+    levelLabel.BackgroundTransparency = 1
+    levelLabel.Text = getPetLevel(pet)
+    levelLabel.TextColor3 = Color3.fromRGB(180, 180, 255)
+    levelLabel.Font = Enum.Font.Gotham
+    levelLabel.TextScaled = true
+    levelLabel.Parent = bg
+    
+    local mpsLabel = Instance.new("TextLabel")
+    mpsLabel.Name = "MPS"
+    mpsLabel.Size = UDim2.new(1, -8, 0, 18)
+    mpsLabel.BackgroundTransparency = 1
+    mpsLabel.Text = getPetMPS(pet)
+    mpsLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+    mpsLabel.Font = Enum.Font.GothamBold
+    mpsLabel.TextScaled = true
+    mpsLabel.Parent = bg
+    
+    local mutLabel = Instance.new("TextLabel")
+    mutLabel.Name = "Mutation"
+    mutLabel.Size = UDim2.new(1, -8, 0, 18)
+    mutLabel.BackgroundTransparency = 1
+    mutLabel.Text = ""
+    mutLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+    mutLabel.Font = Enum.Font.GothamBold
+    mutLabel.TextScaled = true
+    mutLabel.Visible = false
+    mutLabel.Parent = bg
+    
+    local ownerLabel = Instance.new("TextLabel")
+    ownerLabel.Name = "Owner"
+    ownerLabel.Size = UDim2.new(1, -8, 0, 14)
+    ownerLabel.BackgroundTransparency = 1
+    ownerLabel.Text = "Owner: " .. getOwnerName(pet)
+    ownerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    ownerLabel.Font = Enum.Font.Gotham
+    ownerLabel.TextScaled = true
+    ownerLabel.Parent = bg
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "PetESPHighlight"
+    highlight.Adornee = pet
+    highlight.FillTransparency = 0.7
+    highlight.OutlineTransparency = 0.3
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.FillColor = Color3.fromRGB(0, 255, 100)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.Parent = pet
+    
+    local function updateESP()
+        local mut = getPetMutation(pet)
+        if mut then
+            mutLabel.Text = mut
+            mutLabel.Visible = true
+            stroke.Color = Color3.fromRGB(255, 215, 0)
+            highlight.FillColor = Color3.fromRGB(255, 215, 0)
+            highlight.OutlineColor = Color3.fromRGB(255, 215, 0)
+        else
+            mutLabel.Visible = false
+            stroke.Color = Color3.fromRGB(50, 50, 50)
+            highlight.FillColor = Color3.fromRGB(0, 255, 100)
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        end
+        
+        nameLabel.Text = getPetName(pet)
+        levelLabel.Text = getPetLevel(pet)
+        mpsLabel.Text = getPetMPS(pet)
+        ownerLabel.Text = "Owner: " .. getOwnerName(pet)
+    end
+    
+    updateESP()
+    
+    return {
+        billboard = billboard,
+        highlight = highlight,
+        update = updateESP,
+    }
 end
 
-local function updatePetESPText(pet, folder)
-    local billboard = folder:FindFirstChild("PetESP_Name")
-    if not billboard then return end
-    local text = billboard:FindFirstChildOfClass("TextLabel")
-    if not text then return end
-
-    local species, mutation, mps = getPetInfo(pet)
-    local displayText = "🐾 " .. tostring(species or pet.Name)
-
-    if mps then
-        displayText = displayText .. "\n💰 " .. tostring(mps) .. "/s"
+local function setupPetESP(pet)
+    if espTracker[pet] then return end
+    if pet:GetAttribute("Species") == nil then return end
+    
+    local esp = createPetESP(pet)
+    if esp then
+        espTracker[pet] = esp
     end
-    if mutation and tostring(mutation) ~= "None" and tostring(mutation) ~= "Normal" and tostring(mutation) ~= "" then
-        displayText = displayText .. "\n🧬 " .. tostring(mutation)
-    end
-
-    text.Text = displayText
 end
 
-local function scanPetsInWorkspace()
+local function scanPets()
     local runtimePets = Workspace:FindFirstChild("RuntimePets")
     if not runtimePets then return end
-
+    
     for _, pet in ipairs(runtimePets:GetChildren()) do
-        if pet:IsA("Model") and not PetESPs[pet] then
-            createPetESP(pet)
-        end
+        setupPetESP(pet)
     end
 end
 
-local function updatePetESP()
-    for pet, folder in pairs(PetESPs) do
-        if not pet.Parent then
+local runtimePetsFolder = Workspace:FindFirstChild("RuntimePets")
+if runtimePetsFolder then
+    runtimePetsFolder.ChildAdded:Connect(function(child)
+        task.wait(0.1)
+        setupPetESP(child)
+    end)
+    runtimePetsFolder.ChildRemoved:Connect(function(child)
+        removePetESP(child)
+    end)
+end
+
+Workspace.ChildAdded:Connect(function(child)
+    if child.Name == "RuntimePets" and child:IsA("Folder") then
+        child.ChildAdded:Connect(function(pet)
+            task.wait(0.1)
+            setupPetESP(pet)
+        end)
+        child.ChildRemoved:Connect(function(pet)
             removePetESP(pet)
-        else
-            for _, obj in ipairs(folder:GetChildren()) do
-                if obj:IsA("Highlight") or obj:IsA("BillboardGui") then
-                    obj.Enabled = petsEspEnabled
-                end
-            end
-            updatePetESPText(pet, folder)
+        end)
+        for _, pet in ipairs(child:GetChildren()) do
+            setupPetESP(pet)
         end
     end
-end
+end)
+
+scanPets()
 
 task.spawn(function()
-    while task.wait(1) do
+    while task.wait(0.5) do
         if petsEspEnabled then
-            scanPetsInWorkspace()
-            updatePetESP()
+            for pet, esp in pairs(espTracker) do
+                if pet.Parent then
+                    esp.update()
+                else
+                    removePetESP(pet)
+                end
+            end
+            scanPets()
+        else
+            for pet, esp in pairs(espTracker) do
+                removePetESP(pet)
+            end
         end
     end
 end)
@@ -453,7 +514,7 @@ local function stopAntiKnockback()
 end
 
 --------------------------------------------------
--- AUTO LOCK BASE (firetouchinterest + skip cooldown)
+-- AUTO LOCK BASE
 --------------------------------------------------
 local function findMyPlot()
     local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -471,14 +532,11 @@ local function findMyPlot()
 end
 
 local function getNetworkModule()
-    local paths = {
-        ReplicatedStorage:FindFirstChild("Modules"),
-        ReplicatedStorage:FindFirstChild("Shared"),
-    }
-    for _, path in ipairs(paths) do
-        if path then
-            local mod = path:FindFirstChild("Network")
-            if mod then return mod end
+    local shared = ReplicatedStorage:FindFirstChild("Shared")
+    if shared then
+        local services = shared:FindFirstChild("Services")
+        if services then
+            return services:FindFirstChild("Network")
         end
     end
     return nil
@@ -497,11 +555,10 @@ local function startAutoLock()
                 local lockObj = myPlot:FindFirstChild("Lock")
                 
                 if lockObj then
-                    local currentState = lockObj:GetAttribute(LOCK_STATE_ATTR) or STATE_IDLE
+                    local currentState = lockObj:GetAttribute("LockState") or "Idle"
                     local pad = lockObj:FindFirstChild("Pad")
 
-                    if currentState == STATE_IDLE and pad then
-                        -- Симулируем касание Pad'a
+                    if currentState == "Idle" and pad then
                         pcall(function()
                             firetouchinterest(rootPart, pad, 0)
                         end)
@@ -510,12 +567,10 @@ local function startAutoLock()
                             firetouchinterest(rootPart, pad, 1)
                         end)
 
-                    elseif currentState == STATE_COOLDOWN then
-                        -- Пропускаем кулдаун
+                    elseif currentState == "Cooldown" then
                         if not skipCooldownDebounce then
                             skipCooldownDebounce = true
 
-                            -- Способ 1: Network модуль
                             local netMod = getNetworkModule()
                             if netMod then
                                 local success, network = pcall(function()
@@ -528,7 +583,6 @@ local function startAutoLock()
                                 end
                             end
 
-                            -- Способ 2: ProximityPrompt
                             if pad then
                                 local prompt = pad:FindFirstChild("SkipCooldownPrompt")
                                 if prompt and prompt:IsA("ProximityPrompt") then
@@ -538,7 +592,6 @@ local function startAutoLock()
                                 end
                             end
 
-                            -- Способ 3: Ищем prompt на самом Lock
                             for _, descendant in ipairs(lockObj:GetDescendants()) do
                                 if descendant:IsA("ProximityPrompt") and descendant.Name:find("Skip") then
                                     pcall(function()
@@ -626,71 +679,47 @@ local function stopAntiCheatBypass()
 end
 
 --------------------------------------------------
--- WALL HOP (STEALTH)
+-- WALL HOP (BodyVelocity Flight)
 --------------------------------------------------
-
 local wallHopDebounce = false
 local wallHopLastTrigger = 0
 
 RunService.Heartbeat:Connect(function()
+    if not wallHopEnabled or not rootPart or not humanoid then return end
+    if wallHopDebounce then return end
 
-    if not wallHopEnabled
-    or not rootPart
-    or not humanoid then
-        return
-    end
-
-    if wallHopDebounce then
-        return
-    end
-
-    -- Cooldown to avoid spamming
     local currentTime = tick()
-    if currentTime - wallHopLastTrigger < 0.4 then
-        return
-    end
+    if currentTime - wallHopLastTrigger < 1 then return end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    -- Only check forward direction (less suspicious than omnidirectional)
     local forwardDirection = rootPart.CFrame.LookVector
-
-    local result = workspace:Raycast(
-        rootPart.Position,
-        forwardDirection * 2.5,
-        rayParams
-    )
+    local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
 
     if result then
         wallHopDebounce = true
         wallHopLastTrigger = currentTime
+        isWallHopping = true
 
-        -- Use Humanoid state change instead of raw velocity (looks like normal jump)
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-
-        -- Small randomized CFrame nudge upward instead of large velocity burst
         task.spawn(function()
-            local hopHeight = math.random(8, 12) / 10
-            local startCFrame = rootPart.CFrame
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(0, math.huge, 0)
+            bv.Velocity = Vector3.new(0, 60, 0)
+            bv.Parent = rootPart
             
-            -- Gentle upward push via CFrame in micro-steps
-            for i = 1, 3 do
-                rootPart.CFrame = rootPart.CFrame + Vector3.new(0, hopHeight, 0)
-                task.wait(0.02)
-            end
+            task.wait(0.8) -- Длительность полёта
             
-            -- Add slight forward momentum
-            local forwardNudge = forwardDirection * 2
-            rootPart.CFrame = rootPart.CFrame + forwardNudge
+            if bv then bv:Destroy() end
             
-            task.wait(0.15)
+            task.wait(0.5)
+            isWallHopping = false
             wallHopDebounce = false
         end)
     end
-
 end)
+
 --------------------------------------------------
 -- ANTI FALL CIRCLE
 --------------------------------------------------
@@ -877,7 +906,7 @@ PetsEspButton.MouseButton1Click:Connect(function()
     petsEspEnabled = not petsEspEnabled
     PetsEspButton.Text = "PETS ESP     " .. (petsEspEnabled and "ON" or "OFF")
     if not petsEspEnabled then
-        for pet, _ in pairs(PetESPs) do
+        for pet, _ in pairs(espTracker) do
             removePetESP(pet)
         end
     end
