@@ -1044,14 +1044,9 @@ local function switchTab(tabName)
     for name, page in pairs(Pages) do
         if name == tabName then
             page.Visible = true
-            page.GroupTransparency = 1
-            TweenService:Create(page, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {GroupTransparency = 0}):Play()
             CurrentActivePage = page
         else
-            if page.Visible then
-                TweenService:Create(page, TweenInfo.new(0.15, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {GroupTransparency = 1}):Play()
-                task.delay(0.15, function() page.Visible = false end)
-            end
+            page.Visible = false
         end
     end
     for name, data in pairs(TabButtons) do
@@ -1108,9 +1103,6 @@ local function CreateTab(text, icon)
     Page.ScrollBarImageColor3 = Theme.Stroke
     Page.Visible = false
     Page.Parent = Main
-
-    -- Make it a CanvasGroup for fade animation
-    Page.GroupTransparency = 1
 
     local PageLayout = Instance.new("UIListLayout")
     PageLayout.FillDirection = Enum.FillDirection.Vertical
