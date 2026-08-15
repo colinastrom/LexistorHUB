@@ -1,8 +1,6 @@
 --=========================================================
 --  SSS HUB — Unified (Roblox, Luau)
---  UI: CanvasGroup, градиенты, анимации, тени
---  Logic: ESP, Pets, ServerHop, Config, Keybinds, AutoLock
---  Keybind: RightCtrl — скрыть/показать
+--  Исправлено: убран CanvasGroup для совместимости
 --=========================================================
 
 local Players          = game:GetService("Players")
@@ -17,19 +15,15 @@ local VirtualUser      = game:GetService("VirtualUser")
 
 local LP = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
---[[ ========== SAFE EXECUTOR API ========== ]]
 local SafeAPI = {
     isfile   = typeof(isfile)   == "function" and isfile   or function() return false end,
     readfile = typeof(readfile) == "function" and readfile or function() return "" end,
     writefile= typeof(writefile)== "function" and writefile or function() end,
-    HttpGet  = typeof(game.HttpGet) == "function" and function(url)
-        return game:HttpGet(url)
-    end or function() return "" end,
+    HttpGet  = typeof(game.HttpGet) == "function" and function(url) return game:HttpGet(url) end or function() return "" end,
     setclip  = typeof(setclipboard) == "function" and setclipboard or function() end,
     firetouch= typeof(firetouchinterest) == "function" and firetouchinterest or function() end,
 }
 
---[[ ========== THEME ========== ]]
 local C = {
     BG     = Color3.fromRGB(9, 10, 16),
     CARD   = Color3.fromRGB(16, 19, 30),
@@ -47,7 +41,6 @@ local C = {
     PINK   = Color3.fromRGB(232, 62, 140),
 }
 
---[[ ========== CONFIG ========== ]]
 local ConfigFile = "SSSHubConfig.json"
 local JobsFile   = "SSSHubJobs.json"
 local Config     = {}
@@ -74,13 +67,11 @@ local function SaveConfig()
     SaveJSON(ConfigFile, Config)
 end
 
--- Apply saved accent
 if Config.AccentColor then
     local c = Config.AccentColor
     C.ACC1 = Color3.fromRGB(c[1], c[2], c[3])
 end
 
---[[ ========== STATE ========== ]]
 local State = {
     AutoRun      = Config.AutoRun      or false,
     ESP          = Config.ESP          or false,
@@ -94,7 +85,6 @@ local State = {
 }
 local SavedJobs = LoadJSON(JobsFile) or {}
 
---[[ ========== HELPERS ========== ]]
 local function new(cls, props, parent)
     local o = Instance.new(cls)
     for k,v in pairs(props) do o[k] = v end
@@ -115,7 +105,6 @@ local function grad(p, c1, c2, rot)
     return new("UIGradient", {Parent=p, Color=ColorSequence.new(c1,c2), Rotation=rot or 0})
 end
 
---[[ ========== NOTIFICATIONS ========== ]]
 local gui = new("ScreenGui", {Name="SSSHub", IgnoreGuiInset=true,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling, ResetOnSpawn=false})
 pcall(function() gui.Parent = game:GetService("CoreGui") end)
@@ -179,16 +168,14 @@ local function notify(kind, title, text, duration)
     end end)
 end
 
---[[ ========== MAIN WINDOW ========== ]]
-local main = new("CanvasGroup", {AnchorPoint=Vector2.new(.5,.5), Position=UDim2.new(.5,0,.5,0),
-    Size=UDim2.new(0,430,0,640), BackgroundColor3=C.BG, ClipsDescendants=true, GroupTransparency=1})
+local main = new("Frame", {AnchorPoint=Vector2.new(.5,.5), Position=UDim2.new(.5,0,.5,0),
+    Size=UDim2.new(0,430,0,640), BackgroundColor3=C.BG, ClipsDescendants=true, BackgroundTransparency=1})
 main.Parent = gui
 corner(main, 18)
 local winStroke = new("UIStroke", {Parent=main, Thickness=1.4, Transparency=.45})
 grad(winStroke, C.ACC1, C.ACC2, 90)
 local scale = new("UIScale", {Scale=.92, Parent=main})
 
--- header
 local header = new("TextButton", {Text="", BackgroundColor3=C.BG, BorderSizePixel=0,
     Size=UDim2.new(1,0,0,64), Parent=main, AutoButtonColor=false})
 local logo = new("TextLabel", {Text="SS", TextSize=26, Font=Enum.Font.GothamBlack,
@@ -201,7 +188,6 @@ new("TextLabel", {Text="GAME ENHANCEMENT", TextColor3=C.SUB, TextSize=11, Font=E
     BackgroundTransparency=1, Position=UDim2.new(0,66,0,34), Size=UDim2.new(0,240,0,16),
     TextXAlignment=Enum.TextXAlignment.Left, Parent=header})
 
--- minimize
 local minBtn = new("TextButton", {Text="—", TextColor3=C.SUB, TextSize=16, Font=Enum.Font.GothamBold,
     BackgroundColor3=C.CARD, Size=UDim2.new(0,36,0,30), Position=UDim2.new(1,-48,0,17),
     AutoButtonColor=false, Parent=header})
@@ -216,7 +202,6 @@ minBtn.Activated:Connect(function()
     minBtn.Text = minimized and "□" or "—"
 end)
 
--- drag (fixed leak)
 local dragStart, startPos
 header.InputBegan:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
@@ -235,7 +220,6 @@ UserInputService.InputChanged:Connect(function(inp)
     end
 end)
 
---[[ ========== TABS ========== ]]
 local tabBar = new("Frame", {BackgroundTransparency=1, Position=UDim2.new(0,14,0,72),
     Size=UDim2.new(1,-28,0,44), Parent=main})
 new("UIListLayout", {FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,8), Parent=tabBar})
@@ -251,23 +235,17 @@ local function addTab(name)
     local btn = new("TextButton", {Text=name, Font=Enum.Font.GothamBold, TextSize=13,
         TextColor3=C.SUB, BackgroundTransparency=1, Size=UDim2.new(1/4,-6,1,0),
         AutoButtonColor=false, Parent=tabBar, ZIndex=1})
-    local pg = new("CanvasGroup", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
-        Visible=false, GroupTransparency=1, Parent=pagesBox})
+    local pg = new("Frame", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
+        Visible=false, Parent=pagesBox})
     local sf = new("ScrollingFrame", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
-        BorderSizePixel=0, ScrollBarThickness=0,
-        Parent=pg}) -- Убрали AutomaticCanvasSize
+        BorderSizePixel=0, ScrollBarThickness=0, Parent=pg})
     new("UIListLayout", {Padding=UDim.new(0,10), Parent=sf})
     new("UIPadding", {PaddingRight=UDim.new(0,2), Parent=sf})
 
-    -- auto canvas via event
     local layout = sf:FindFirstChildOfClass("UIListLayout")
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         sf.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+20)
     end)
-
-    table.insert(tabs, btn); table.insert(pages, pg)
-    return sf, btn
-end
 
     table.insert(tabs, btn); table.insert(pages, pg)
     return sf, btn
@@ -282,16 +260,13 @@ local function selectTab(i)
         end
         local pg = pages[idx]
         if active then
-            pg.Visible = true; pg.GroupTransparency = 1; pg.Position = UDim2.new(0,0,0,14)
-            tw(pg, .3, {GroupTransparency=0, Position=UDim2.new(0,0,0,0)})
-        elseif pg.Visible then
-            tw(pg, .18, {GroupTransparency=1}, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-            task.delay(.18, function() pg.Visible = false end)
+            pg.Visible = true
+        else
+            pg.Visible = false
         end
     end
 end
 
---[[ ========== COMPONENTS ========== ]]
 local function rowBase(parent, height)
     local row = new("Frame", {Size=UDim2.new(1,0,0,height or 62), BackgroundColor3=C.CARD,
         BorderSizePixel=0, Parent=parent})
@@ -317,7 +292,6 @@ local function title(row, text)
         TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
 end
 
--- Keybind registry
 local KeybindRegistry = {}
 local isListeningKeybind = false
 
@@ -500,7 +474,6 @@ local function addSlider(page, o)
     end)
 end
 
---[[ ========== POPUP BUILDER ========== ]]
 local function createPopup(name, w, h)
     local f = new("Frame", {Size=UDim2.new(0,w,0,h), Position=UDim2.new(.5,-w/2,.5,-h/2),
         BackgroundColor3=C.CARD, BorderSizePixel=0, Visible=false, Parent=gui, ZIndex=10})
@@ -530,7 +503,6 @@ local function createPopup(name, w, h)
     return f
 end
 
---[[ ========== CHARACTER SETUP ========== ]]
 local humanoid, rootPart, normalSpeed = nil, nil, 16
 local lastJumpTime = 0
 
@@ -547,9 +519,6 @@ end
 if LP.Character then setupCharacter(LP.Character) end
 LP.CharacterAdded:Connect(setupCharacter)
 
---[[ ========== FEATURES ========== ]]
-
--- AutoRun
 RunService.Heartbeat:Connect(function()
     if humanoid and humanoid.Health > 0 then
         if State.AutoRun then
@@ -565,7 +534,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Player ESP
 local ESPs = {}
 local RainbowLabels = {}
 
@@ -632,7 +600,6 @@ for _, plr in ipairs(Players:GetPlayers()) do setupPlayerESP(plr) end
 Players.PlayerAdded:Connect(setupPlayerESP)
 Players.PlayerRemoving:Connect(removeESP)
 
--- Pets ESP
 local PetTracker = {}
 local petFilterName = ""
 local petFilterMPS = 0
@@ -795,7 +762,6 @@ task.spawn(function()
     end
 end)
 
---[[ ========== ANTI KNOCKBACK ========== ]]
 local antiKbConn, isCountering, counterEnd, lastSafePos = nil, false, 0, nil
 
 local function startAntiKnockback()
@@ -826,7 +792,6 @@ local function stopAntiKnockback()
     if antiKbConn then antiKbConn:Disconnect(); antiKbConn = nil end
 end
 
---[[ ========== AUTO LOCK BASE ========== ]]
 local LOCK_ATTR = "LockState"
 local STATE_IDLE, STATE_LOCKED = "Idle", "Locked"
 local autoLockThread, lastLockState = nil, nil
@@ -879,7 +844,6 @@ local function stopAutoLock()
     lastLockState = nil
 end
 
---[[ ========== WALL HOP ========== ]]
 local wallHopActive, wallHopWasClimbing, wallHopClear = false, false, 0
 
 RunService.Heartbeat:Connect(function()
@@ -909,7 +873,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
---[[ ========== ANTI FALL ========== ]]
 local AntiFall = nil
 local function createAntiFall()
     if not rootPart then return end
@@ -930,7 +893,6 @@ local function removeAntiFall()
     if AntiFall then AntiFall:Destroy(); AntiFall = nil end
 end
 
---[[ ========== ANTI AFK ========== ]]
 local antiAfkConn = nil
 local function startAntiAfk()
     if antiAfkConn then return end
@@ -946,7 +908,6 @@ local function stopAntiAfk()
 end
 if State.AntiAFK then startAntiAfk() end
 
---[[ ========== BYPASS: ENTER / EXIT BASE ========== ]]
 local baseDebounce = false
 local function smoothVerticalMove(dist, dir)
     if not rootPart or baseDebounce then return end
@@ -971,7 +932,6 @@ local function smoothVerticalMove(dist, dir)
     end)
 end
 
---[[ ========== SERVER HOP ========== ]]
 local ServerSearching = false
 
 local function GetServers()
@@ -1019,11 +979,9 @@ local function SaveJobs()
     SaveJSON(JobsFile, SavedJobs)
 end
 
---[[ ========== POPUPS ========== ]]
 local BypassMenu = createPopup("BYPASS", 220, 220)
 local PetFilterMenu = createPopup("PET FILTERS", 260, 180)
 
--- Wall Hop toggle inside BypassMenu
 local whRow = new("Frame", {Size=UDim2.new(1,-28,0,38), Position=UDim2.new(0,14,0,40),
     BackgroundColor3=C.CARD, Parent=BypassMenu})
 corner(whRow, 10)
@@ -1053,7 +1011,6 @@ new("TextButton", {Text="", BackgroundTransparency=1, Size=UDim2.new(1,0,1,0),
     Parent=whRow}).Activated:Connect(function() setWallHop(not State.WallHop) end)
 if State.WallHop then task.delay(0.2, function() setWallHop(true) end) end
 
--- Enter/Exit Base buttons
 local enterBtn = new("TextButton", {Text="Enter Base", TextColor3=C.TEXT, TextSize=12,
     Font=Enum.Font.GothamBold, BackgroundColor3=C.HOVER, Size=UDim2.new(1,-28,0,34),
     Position=UDim2.new(0,14,0,88), Parent=BypassMenu})
@@ -1070,7 +1027,6 @@ exitBtn.Activated:Connect(function()
     smoothVerticalMove(20, 1); notify("Info", "Exit Base", "Moving up")
 end)
 
--- Pet Filter inputs
 new("TextLabel", {Text="Name:", TextColor3=C.SUB, TextSize=11,
     Font=Enum.Font.Gotham, BackgroundTransparency=1, Position=UDim2.new(0,14,0,40),
     Size=UDim2.new(0,50,0,20), TextXAlignment=Enum.TextXAlignment.Left, Parent=PetFilterMenu})
@@ -1114,13 +1070,11 @@ clearBtn.Activated:Connect(function()
     notify("Info", "Pet Filter", "Cleared")
 end)
 
---[[ ========== TABS CREATION ========== ]]
 local mainPage,  _ = addTab("🏠 MAIN")
 local combatPage, _ = addTab("⚔ COMBAT")
 local serverPage, _ = addTab("🖥 SERVER")
 local settingsPage,_ = addTab("⚙ SETTINGS")
 
--- MAIN PAGE
 addToggle(mainPage, {icon="🏃", color=C.BLUE, title="AUTO RUN", keybind="R", default=State.AutoRun,
     callback=function(v)
         State.AutoRun = v; Config.AutoRun = v; SaveConfig()
@@ -1174,7 +1128,6 @@ addButton(mainPage, {icon="🔽", color=C.ACC2, title="PET FILTER",
 addButton(mainPage, {icon="⚡", color=C.ACC1, title="BYPASS MENU", accent=true, keybind="B",
     callback=function() BypassMenu.Visible = not BypassMenu.Visible end})
 
--- COMBAT PAGE
 addSlider(combatPage, {icon="🚀", color=C.BLUE, title="SPEED", min=16, max=120, default=normalSpeed,
     callback=function(v)
         normalSpeed = v
@@ -1186,7 +1139,6 @@ addSlider(combatPage, {icon="🐇", color=C.TEAL, title="JUMP", min=50, max=220,
         if humanoid then humanoid.UseJumpPower = true; humanoid.JumpPower = v end
     end})
 
--- SERVER PAGE
 local statusLbl = new("TextLabel", {Text="Saved Jobs: "..#SavedJobs, TextColor3=C.SUB, TextSize=12,
     Font=Enum.Font.GothamBold, BackgroundTransparency=1, Size=UDim2.new(1,0,0,20), Parent=serverPage})
 
@@ -1238,7 +1190,6 @@ addButton(serverPage, {icon="🌑", color=C.BLUE, title="JOIN EMPTY SERVER",
         ServerSearching = false
     end})
 
--- Server list
 local listContainer = new("Frame", {Size=UDim2.new(1,0,0,0), BackgroundTransparency=1,
     AutomaticSize=Enum.AutomaticSize.Y, Parent=serverPage})
 new("UIListLayout", {Padding=UDim.new(0,6), Parent=listContainer})
@@ -1274,7 +1225,6 @@ local function UpdateServerList()
 end
 UpdateServerList()
 
--- SETTINGS PAGE
 addToggle(settingsPage, {icon="💾", color=C.GREEN, title="SAVE CONFIG", default=State.SaveConfig,
     callback=function(v)
         State.SaveConfig = v; Config.SaveConfig = v; SaveConfig()
@@ -1323,12 +1273,11 @@ new("TextLabel", {Text="Click keybind buttons to rebind.\nPress ESC to cancel.",
     TextSize=11, Font=Enum.Font.Gotham, BackgroundTransparency=1, Size=UDim2.new(1,0,0,40),
     TextWrapped=true, Parent=settingsPage})
 
---[[ ========== INIT TABS ========== ]]
 for i, btn in ipairs(tabs) do btn.Activated:Connect(function() selectTab(i) end) end
 
 task.wait(.1)
 selectTab(1)
-tw(main, .5, {GroupTransparency=0})
+tw(main, .5, {BackgroundTransparency=0})
 tw(scale, .5, {Scale=1}, Enum.EasingStyle.Back)
 
 local visible = true
@@ -1338,9 +1287,9 @@ UserInputService.InputBegan:Connect(function(inp, gp)
         visible = not visible
         if visible then
             main.Visible = true
-            tw(main,.35,{GroupTransparency=0}); tw(scale,.35,{Scale=1},Enum.EasingStyle.Back)
+            tw(main,.35,{BackgroundTransparency=0}); tw(scale,.35,{Scale=1},Enum.EasingStyle.Back)
         else
-            tw(main,.25,{GroupTransparency=1},Enum.EasingStyle.Quart,Enum.EasingDirection.In)
+            tw(main,.25,{BackgroundTransparency=1},Enum.EasingStyle.Quart,Enum.EasingDirection.In)
             tw(scale,.25,{Scale=.92})
             task.delay(.25, function() main.Visible = false end)
         end
