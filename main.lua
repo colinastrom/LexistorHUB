@@ -1,4 +1,4 @@
---// SSSHUB STEAL + MAIN
+--// SSSHUB STEAL + MAIN (FIXED)
 --// By Rosomax0 • Developer
 --// UI REDESIGNED BY ENI
 
@@ -14,6 +14,41 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local CoreGui = game:GetService("CoreGui")
+
+--------------------------------------------------
+-- CLEANUP SYSTEM (защита от дублирования при перезапуске)
+--------------------------------------------------
+local CleanupConnections = {}
+local CleanupTasks = {}
+local CleanupExtra = {}
+
+local function TrackConnection(conn)
+    table.insert(CleanupConnections, conn)
+    return conn
+end
+
+local function TrackTask(t)
+    table.insert(CleanupTasks, t)
+    return t
+end
+
+local env = (getgenv and getgenv()) or _G
+if env.SSSHubCleanup then pcall(env.SSSHubCleanup) end
+
+env.SSSHubCleanup = function()
+    for _, conn in ipairs(CleanupConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    for _, t in ipairs(CleanupTasks) do
+        pcall(function() task.cancel(t) end)
+    end
+    for _, fn in ipairs(CleanupExtra) do
+        pcall(fn)
+    end
+    if CoreGui:FindFirstChild("SSSHubSteal") then CoreGui.SSSHubSteal:Destroy() end
+    if CoreGui:FindFirstChild("SSSNotify") then CoreGui.SSSNotify:Destroy() end
+    env.SSSHubCleanup = nil
+end
 
 if CoreGui:FindFirstChild("SSSHubSteal") then CoreGui.SSSHubSteal:Destroy() end
 if CoreGui:FindFirstChild("SSSNotify") then CoreGui.SSSNotify:Destroy() end
@@ -60,12 +95,6 @@ if Config.SaveConfigEnabled ~= nil then
     SaveConfigEnabled = Config.SaveConfigEnabled
 end
 
-if Config.AccentColor then
-    local c = Config.AccentColor
-    Theme.Accent = Color3.fromRGB(c[1], c[2], c[3])
-    Theme.ToggleOn = Color3.fromRGB(c[1], c[2], c[3])
-end
-
 local Keybinds = Config.Keybinds or {}
 
 local function GetKeybind(name, default)
@@ -110,42 +139,6 @@ end
 if Config.AccentColor then
     local c = Config.AccentColor
     SetAccent(Color3.fromRGB(c[1], c[2], c[3]))
-end
-
---------------------------------------------------
--- SOUND
---------------------------------------------------
-local ClickSound = Instance.new("Sound")
-ClickSound.SoundId = "rbxassetid://6895056283"
-ClickSound.Volume = 0.4
-ClickSound.Parent = workspace
-
-local function playClick()
-    pcall(function() ClickSound:Play() end)
-end
-
---------------------------------------------------
--- DRAGGABLE
---------------------------------------------------
-local function MakeDraggable(frame)
-    local dragging, dragInput, mousePos, framePos
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; mousePos = input.Position; framePos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - mousePos
-            frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
-        end
-    end)
 end
 
 --------------------------------------------------
@@ -291,20 +284,62 @@ local function notify(title, text, notifType)
 end
 
 --------------------------------------------------
--- SETTINGS & STATE
+-- SOUND (привязан к GUI, не к миру)
+--------------------------------------------------
+local ClickSound = Instance.new("Sound")
+ClickSound.SoundId = "rbxassetid://6895056283"
+ClickSound.Volume = 0.4
+ClickSound.Parent = NotifyGui
+
+local function playClick()
+    pcall(function() ClickSound:Play() end)
+end
+
+--------------------------------------------------
+-- DRAGGABLE (фикс утечки коннекшенов)
+--------------------------------------------------
+local function MakeDraggable(frame)
+    local dragging, dragInput, mousePos, framePos
+    TrackConnection(frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; mousePos = input.Position; framePos = frame.Position
+            local endConn
+            endConn = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    endConn:Disconnect()
+                end
+            end)
+        end
+    end))
+    TrackConnection(frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end))
+    TrackConnection(UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - mousePos
+            frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
+        end
+    end))
+end
+
+--------------------------------------------------
+-- SETTINGS & STATE (единый источник: Config["<Имя тоггла>"])
 --------------------------------------------------
 local FAST_SPEED = 38
 local UP_DISTANCE = 20
 local DOWN_DISTANCE = 17
 
-local autoRun = Config.autoRun or false
-local espEnabled = Config.espEnabled or false
-local wallHopEnabled = Config.wallHopEnabled or false
-local antiFallEnabled = Config.antiFallEnabled or false
-local petsEspEnabled = Config.petsEspEnabled or false
-local antiKnockbackEnabled = Config.antiKnockbackEnabled or false
-local autoLockEnabled = Config.autoLockEnabled or false
-local antiAfkEnabled = Config.antiAfkEnabled or false
+local autoRun = Config["Auto Run"] or false
+local espEnabled = Config["Player ESP"] or false
+local petsEspEnabled = Config["Pets ESP"] or false
+local antiFallEnabled = Config["Anti Fall"] or false
+local antiAfkEnabled = Config["Anti AFK"] or false
+local antiKnockbackEnabled = Config["Anti Knockback"] or false
+local autoLockEnabled = Config["Auto Lock Base"] or false
+local wallHopEnabled = Config["Wall Hop"] or false
 
 local humanoid = nil
 local rootPart = nil
@@ -315,44 +350,48 @@ local AntiFall = nil
 local antiKnockbackConnection = nil
 local autoLockConnection = nil
 local antiAfkConnection = nil
+local autoRunConnection = nil
 
 local LOCK_STATE_ATTR = "LockState"
 local STATE_IDLE = "Idle"
 local STATE_LOCKED = "Locked"
 
 local lastJumpTime = 0
-local lastSafePos = nil
-local isCountering = false
-local counterEndTime = 0
 
 local function setupCharacter(character)
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
     normalSpeed = humanoid.WalkSpeed
-    humanoid.StateChanged:Connect(function(_, newState)
+    TrackConnection(humanoid.StateChanged:Connect(function(_, newState)
         if newState == Enum.HumanoidStateType.Jumping then lastJumpTime = os.clock() end
-    end)
+    end))
 end
 if LocalPlayer.Character then setupCharacter(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(setupCharacter)
+TrackConnection(LocalPlayer.CharacterAdded:Connect(setupCharacter))
 
 --------------------------------------------------
--- AUTO RUN
+-- AUTO RUN (цикл живёт только пока включён)
 --------------------------------------------------
-RunService.Heartbeat:Connect(function()
-    if humanoid and humanoid.Health > 0 then
-        if autoRun then
+local function startAutoRun()
+    if autoRunConnection then return end
+    autoRunConnection = TrackConnection(RunService.Heartbeat:Connect(function()
+        if humanoid and humanoid.Health > 0 then
             humanoid.WalkSpeed = FAST_SPEED
             local camera = workspace.CurrentCamera
             if camera then
                 local lookVector = camera.CFrame.LookVector
                 humanoid:Move(Vector3.new(lookVector.X, 0, lookVector.Z), false)
             end
-        else
-            humanoid.WalkSpeed = normalSpeed
         end
+    end))
+end
+
+local function stopAutoRun()
+    if autoRunConnection then autoRunConnection:Disconnect(); autoRunConnection = nil end
+    if humanoid and humanoid.Health > 0 then
+        humanoid.WalkSpeed = normalSpeed
     end
-end)
+end
 
 --------------------------------------------------
 -- PLAYER ESP
@@ -420,16 +459,23 @@ end
 
 local function setupESP(player)
     if player == LocalPlayer then return end
-    player.CharacterAdded:Connect(function(character)
+    TrackConnection(player.CharacterAdded:Connect(function(character)
         task.wait(0.5)
         createESP(player, character)
-    end)
+    end))
     if player.Character then createESP(player, player.Character) end
 end
 
 for _, player in ipairs(Players:GetPlayers()) do setupESP(player) end
-Players.PlayerAdded:Connect(setupESP)
-Players.PlayerRemoving:Connect(function(player) removeESP(player) end)
+TrackConnection(Players.PlayerAdded:Connect(setupESP))
+TrackConnection(Players.PlayerRemoving:Connect(function(player) removeESP(player) end))
+
+table.insert(CleanupExtra, function()
+    for player, folder in pairs(ESPs) do
+        pcall(function() folder:Destroy() end)
+        ESPs[player] = nil
+    end
+end)
 
 --------------------------------------------------
 -- PETS ESP
@@ -479,7 +525,7 @@ local function getPetMutation(pet)
     local tag = pet:FindFirstChild("ItemNameTag", true)
     if tag then
         local mutLabel = tag:FindFirstChild("Mutation", true)
-        if mutLabel and mutLabel:IsA("TextLabel") and mutLabel.Text != "" and mutLabel.Visible then
+        if mutLabel and mutLabel:IsA("TextLabel") and mutLabel.Text ~= "" and mutLabel.Visible then
             return mutLabel.Text
         end
     end
@@ -502,7 +548,7 @@ local function createPetESP(pet)
         if desc:IsA("MeshPart") or desc:IsA("BasePart") then adornPart = desc break end
     end
     if not adornPart then return nil end
-    
+
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "PetESP"
     billboard.Adornee = adornPart
@@ -512,14 +558,14 @@ local function createPetESP(pet)
     billboard.MaxDistance = 0
     billboard.ExtentsOffset = Vector3.new(0, 3, 0)
     billboard.Parent = pet
-    
+
     local layout = Instance.new("UIListLayout")
     layout.FillDirection = Enum.FillDirection.Vertical
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     layout.VerticalAlignment = Enum.VerticalAlignment.Top
     layout.Padding = UDim.new(0, 1)
     layout.Parent = billboard
-    
+
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Size = UDim2.new(1, 0, 0, 14)
     nameLabel.BackgroundTransparency = 1
@@ -532,7 +578,7 @@ local function createPetESP(pet)
     nameStroke.Thickness = 1.5
     nameStroke.Color = Color3.new(0, 0, 0)
     nameStroke.Parent = nameLabel
-    
+
     local mpsLabel = Instance.new("TextLabel")
     mpsLabel.Size = UDim2.new(1, 0, 0, 13)
     mpsLabel.BackgroundTransparency = 1
@@ -545,7 +591,7 @@ local function createPetESP(pet)
     mpsStroke.Thickness = 1.5
     mpsStroke.Color = Color3.new(0, 0, 0)
     mpsStroke.Parent = mpsLabel
-    
+
     local mutLabel = Instance.new("TextLabel")
     mutLabel.Size = UDim2.new(1, 0, 0, 13)
     mutLabel.BackgroundTransparency = 1
@@ -559,7 +605,7 @@ local function createPetESP(pet)
     mutStroke.Thickness = 1.5
     mutStroke.Color = Color3.new(0, 0, 0)
     mutStroke.Parent = mutLabel
-    
+
     local highlight = Instance.new("Highlight")
     highlight.Name = "PetESPHighlight"
     highlight.Adornee = pet
@@ -569,8 +615,8 @@ local function createPetESP(pet)
     highlight.FillColor = Color3.fromRGB(0, 255, 100)
     highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
     highlight.Parent = pet
-    
-    local function updateESP()
+
+    local function updatePetESP()
         if not passesFilter(pet) then
             billboard.Enabled = false
             highlight.Enabled = false
@@ -593,8 +639,8 @@ local function createPetESP(pet)
         nameLabel.Text = getPetName(pet)
         mpsLabel.Text = getPetMPS(pet)
     end
-    updateESP()
-    return {billboard = billboard, highlight = highlight, update = updateESP}
+    updatePetESP()
+    return {billboard = billboard, highlight = highlight, update = updatePetESP}
 end
 
 local function setupPetESP(pet)
@@ -612,21 +658,21 @@ end
 
 local runtimePetsFolder = Workspace:FindFirstChild("RuntimePets")
 if runtimePetsFolder then
-    runtimePetsFolder.ChildAdded:Connect(function(child) task.wait(0.1) setupPetESP(child) end)
-    runtimePetsFolder.ChildRemoved:Connect(function(child) removePetESP(child) end)
+    TrackConnection(runtimePetsFolder.ChildAdded:Connect(function(child) task.wait(0.1) setupPetESP(child) end))
+    TrackConnection(runtimePetsFolder.ChildRemoved:Connect(function(child) removePetESP(child) end))
 end
 
-Workspace.ChildAdded:Connect(function(child)
+TrackConnection(Workspace.ChildAdded:Connect(function(child)
     if child.Name == "RuntimePets" and child:IsA("Folder") then
-        child.ChildAdded:Connect(function(pet) task.wait(0.1) setupPetESP(pet) end)
-        child.ChildRemoved:Connect(function(pet) removePetESP(pet) end)
+        TrackConnection(child.ChildAdded:Connect(function(pet) task.wait(0.1) setupPetESP(pet) end))
+        TrackConnection(child.ChildRemoved:Connect(function(pet) removePetESP(pet) end))
         for _, pet in ipairs(child:GetChildren()) do setupPetESP(pet) end
     end
-end)
+end))
 
 scanPets()
 
-task.spawn(function()
+TrackTask(task.spawn(function()
     while task.wait(0.5) do
         if petsEspEnabled then
             for pet, esp in pairs(espTracker) do
@@ -637,33 +683,39 @@ task.spawn(function()
             for pet, esp in pairs(espTracker) do removePetESP(pet) end
         end
     end
+end))
+
+table.insert(CleanupExtra, function()
+    for pet, esp in pairs(espTracker) do
+        pcall(function() removePetESP(pet) end)
+    end
 end)
 
 --------------------------------------------------
--- ANTI KNOCKBACK
+-- ANTI KNOCKBACK (мягкое ограничение скорости, без телепортов)
 --------------------------------------------------
 local function startAntiKnockback()
     if antiKnockbackConnection then return end
-    antiKnockbackConnection = RunService.Heartbeat:Connect(function()
+    antiKnockbackConnection = TrackConnection(RunService.Heartbeat:Connect(function()
         if not rootPart or not humanoid or humanoid.Health <= 0 then return end
-        local currentVel = rootPart.AssemblyLinearVelocity
+        local vel = rootPart.AssemblyLinearVelocity
         local now = os.clock()
-        local horizontalSpeed = Vector3.new(currentVel.X, 0, currentVel.Z).Magnitude
-        local upwardSpeed = currentVel.Y
-        local timeSinceJump = now - lastJumpTime
-        local isJumpVelocity = timeSinceJump < 0.3
-        if horizontalSpeed > 40 or (upwardSpeed > 35 and not isJumpVelocity) then
-            isCountering = true
-            counterEndTime = now + 0.5
+        local horizontal = Vector3.new(vel.X, 0, vel.Z)
+        local isJumpVelocity = (now - lastJumpTime) < 0.3
+        local clamped = false
+        local y = vel.Y
+        if horizontal.Magnitude > 40 then
+            horizontal = horizontal.Unit * 40
+            clamped = true
         end
-        if isCountering and now < counterEndTime then
-            rootPart.AssemblyLinearVelocity = Vector3.zero
-            if lastSafePos then rootPart.CFrame = CFrame.new(lastSafePos) end
-        else
-            isCountering = false
-            lastSafePos = rootPart.Position
+        if y > 35 and not isJumpVelocity then
+            y = 35
+            clamped = true
         end
-    end)
+        if clamped then
+            rootPart.AssemblyLinearVelocity = Vector3.new(horizontal.X, y, horizontal.Z)
+        end
+    end))
 end
 
 local function stopAntiKnockback()
@@ -688,7 +740,7 @@ local lastLockState = nil
 
 local function startAutoLock()
     if autoLockConnection then return end
-    autoLockConnection = task.spawn(function()
+    autoLockConnection = TrackTask(task.spawn(function()
         while autoLockEnabled do
             local myPlot = findMyPlot()
             if myPlot and rootPart and humanoid then
@@ -698,9 +750,9 @@ local function startAutoLock()
                     local pad = lockObj:FindFirstChild("Pad")
                     if currentState ~= lastLockState then
                         if currentState == STATE_IDLE then
-                            notify("База открыта", "База разблокирована", "warning")
+                            task.spawn(function() notify("База открыта", "База разблокирована", "warning") end)
                         elseif currentState == STATE_LOCKED then
-                            notify("База закрыта", "Auto Lock активирован", "success")
+                            task.spawn(function() notify("База закрыта", "Auto Lock активирован", "success") end)
                         end
                         lastLockState = currentState
                     end
@@ -713,7 +765,7 @@ local function startAutoLock()
             end
             task.wait(1)
         end
-    end)
+    end))
 end
 
 local function stopAutoLock()
@@ -722,15 +774,13 @@ local function stopAutoLock()
 end
 
 --------------------------------------------------
--- WALL HOP (ИСПРАВЛЕНО: Чистый velocity, без CFrame)
+-- WALL HOP (по времени, не по кадрам)
 --------------------------------------------------
-local wallHopActive = false
 local wallHopWasClimbing = false
-local wallHopClearTimer = 0
+local wallHopClearTime = 0
 
-RunService.Heartbeat:Connect(function()
+TrackConnection(RunService.Heartbeat:Connect(function()
     if not wallHopEnabled or not rootPart or not humanoid then
-        wallHopActive = false
         wallHopWasClimbing = false
         return
     end
@@ -740,30 +790,22 @@ RunService.Heartbeat:Connect(function()
     local forwardDirection = rootPart.CFrame.LookVector
     local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
     if result then
-        wallHopActive = true
         wallHopWasClimbing = true
-        wallHopClearTimer = 0
-        -- Высокая скорость, так как проверки velocity нет
-        local upVel = 60 + math.random(-5, 5)
+        wallHopClearTime = os.clock()
+        local upVel = 20 + math.random(-1, 3)
         local currentVel = rootPart.AssemblyLinearVelocity
         rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
-    else
-        if wallHopWasClimbing then
-            wallHopClearTimer = wallHopClearTimer + 1
-            if wallHopClearTimer < 10 then
-                -- Импульс вперёд и вверх для перелезания через край
-                rootPart.AssemblyLinearVelocity = Vector3.new(forwardDirection.X * 30, 40, forwardDirection.Z * 30)
-            else
-                wallHopWasClimbing = false
-                wallHopClearTimer = 0
-            end
+    elseif wallHopWasClimbing then
+        if os.clock() - wallHopClearTime < 0.15 then
+            rootPart.AssemblyLinearVelocity = Vector3.new(forwardDirection.X * 25, 30, forwardDirection.Z * 25)
+        else
+            wallHopWasClimbing = false
         end
-        wallHopActive = false
     end
-end)
+end))
 
 --------------------------------------------------
--- ANTI FALL, ANTI AFK, ENTER/EXIT BASE
+-- ANTI FALL (следует за игроком), ANTI AFK, ENTER/EXIT BASE
 --------------------------------------------------
 local function CreateAntiFall()
     if not rootPart then return nil end
@@ -785,50 +827,50 @@ local function RemoveAntiFall()
     if AntiFall then AntiFall:Destroy(); AntiFall = nil end
 end
 
+TrackConnection(RunService.Heartbeat:Connect(function()
+    if AntiFall and rootPart then
+        AntiFall.CFrame = CFrame.new(rootPart.Position.X, rootPart.Position.Y - 7, rootPart.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
+    end
+end))
+
+table.insert(CleanupExtra, function()
+    pcall(RemoveAntiFall)
+end)
+
 local function startAntiAfk()
     if antiAfkConnection then return end
     local VirtualUser = game:GetService("VirtualUser")
-    antiAfkConnection = LocalPlayer.Idled:Connect(function()
+    antiAfkConnection = TrackConnection(LocalPlayer.Idled:Connect(function()
         VirtualUser:CaptureController()
         VirtualUser:ClickButton2(Vector2.new())
-    end)
+    end))
 end
 
 local function stopAntiAfk()
     if antiAfkConnection then antiAfkConnection:Disconnect(); antiAfkConnection = nil end
 end
 
--- ИСПРАВЛЕНО: BodyVelocity вместо CFrame
 local baseDebounce = false
 
 local function smoothVerticalMove(distance, direction)
     if not rootPart or baseDebounce then return end
     baseDebounce = true
-    
+    local startPos = rootPart.Position
+    local targetY = startPos.Y + (distance * direction)
     task.spawn(function()
-        -- Отключаем коллизию чтобы пройти сквозь блоки
         local originalCollide = rootPart.CanCollide
         pcall(function() rootPart.CanCollide = false end)
-
-        -- Создаём BodyVelocity для плавного движения
-        local bv = Instance.new("BodyVelocity")
-        bv.MaxForce = Vector3.new(0, math.huge, 0)
-        -- Скорость: 50 вниз/вверх (velocity не детектится!)
-        bv.Velocity = Vector3.new(0, 50 * direction, 0)
-        bv.Parent = rootPart
-
-        -- Время полёта = расстояние / скорость
-        local duration = math.abs(distance) / 50
-        task.wait(duration)
-
-        -- Останавливаем
-        if bv then bv:Destroy() end
-
-        -- Возвращаем коллизию
+        local steps = math.abs(distance) * 4
+        local stepSize = (distance / steps) * direction
+        for i = 1, steps do
+            if not rootPart then break end
+            rootPart.CFrame = rootPart.CFrame + Vector3.new(0, stepSize, 0)
+            task.wait(0.005)
+        end
         if rootPart then
+            rootPart.CFrame = CFrame.new(rootPart.Position.X, targetY, rootPart.Position.Z) * CFrame.Angles(0, math.rad(rootPart.Orientation.Y), 0)
             pcall(function() rootPart.CanCollide = originalCollide end)
         end
-
         task.wait(0.2)
         baseDebounce = false
     end)
@@ -850,6 +892,15 @@ local function SaveJobs()
 end
 
 local ServerSearching = false
+
+local function SafeTeleport(jobId)
+    local ok = pcall(function()
+        TeleportService:TeleportToPlaceInstance(PlaceId, jobId, LocalPlayer)
+    end)
+    if not ok then
+        notify("Server Hop", "Teleport failed", "error")
+    end
+end
 
 local function GetServers()
     local AllServers = {}
@@ -903,6 +954,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = CoreGui
 
+-- Floating Toggle Button
 local ToggleBtnFloat = Instance.new("TextButton")
 ToggleBtnFloat.Size = UDim2.new(0, 0, 0, 0)
 ToggleBtnFloat.Position = UDim2.new(0, 20, 0.5, -20)
@@ -926,6 +978,7 @@ FloatStroke.Parent = ToggleBtnFloat
 
 table.insert(AccentTracker.Static, ToggleBtnFloat)
 
+-- Main Window
 local Main = Instance.new("Frame")
 Main.Size = UDim2.new(0, 440, 0, 0)
 Main.Position = UDim2.new(0.5, -220, 0.5, -155)
@@ -947,6 +1000,7 @@ MainStroke.Color = Theme.Stroke
 MainStroke.Thickness = 1.5
 MainStroke.Parent = Main
 
+-- Sidebar
 local Sidebar = Instance.new("Frame")
 Sidebar.Size = UDim2.new(0, 130, 1, 0)
 Sidebar.BackgroundColor3 = Theme.Sidebar
@@ -957,6 +1011,7 @@ local SidebarCorner = Instance.new("UICorner")
 SidebarCorner.CornerRadius = UDim.new(0, 10)
 SidebarCorner.Parent = Sidebar
 
+-- Header
 local Header = Instance.new("Frame")
 Header.Size = UDim2.new(1, -130, 0, 50)
 Header.Position = UDim2.new(0, 130, 0, 0)
@@ -1041,6 +1096,7 @@ ToggleBtnFloat.MouseButton1Click:Connect(function()
     TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.new(0, 440, 0, 310)}):Play()
 end)
 
+-- Sidebar Layout
 local SidebarLayout = Instance.new("UIListLayout")
 SidebarLayout.FillDirection = Enum.FillDirection.Vertical
 SidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -1048,6 +1104,7 @@ SidebarLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 SidebarLayout.Padding = UDim.new(0, 5)
 SidebarLayout.Parent = Sidebar
 
+-- Tab System
 local Pages = {}
 local TabButtons = {}
 local CurrentActivePage = nil
@@ -1131,8 +1188,15 @@ local function CreateTab(text, icon)
     return Page
 end
 
-new("Frame", {Size = UDim2.new(0.8, 0, 0, 1), BackgroundTransparency = 0.5, BackgroundColor3 = Theme.Stroke, BorderSizePixel = 0, Parent = Sidebar})
+-- One separator after all tabs
+local TabSeparator = Instance.new("Frame")
+TabSeparator.Size = UDim2.new(0.8, 0, 0, 1)
+TabSeparator.BackgroundTransparency = 0.5
+TabSeparator.BackgroundColor3 = Theme.Stroke
+TabSeparator.BorderSizePixel = 0
+TabSeparator.Parent = Sidebar
 
+-- Hover Function
 local function AddHover(btn)
     btn.MouseEnter:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.CardHover}):Play()
@@ -1149,7 +1213,7 @@ local isListeningKeybind = false
 
 local function CreateKeybindButton(parent, name, defaultKey, callback)
     local currentKey = GetKeybind(name, defaultKey)
-    
+
     local keyBtn = Instance.new("TextButton")
     keyBtn.Size = UDim2.new(0, 35, 0, 18)
     keyBtn.Position = UDim2.new(1, -80, 0.5, -9)
@@ -1180,7 +1244,7 @@ local function CreateKeybindButton(parent, name, defaultKey, callback)
         local conn
         conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then return end
-            
+
             if input.KeyCode == Enum.KeyCode.Escape then
                 keyBtn.Text = currentKey or "None"
                 keyBtn.BackgroundColor3 = Theme.Background
@@ -1203,17 +1267,18 @@ local function CreateKeybindButton(parent, name, defaultKey, callback)
     end)
 
     if currentKey then
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        TrackConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed or isListeningKeybind then return end
             if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode.Name == currentKey then
                 callback()
             end
-        end)
+        end))
     end
 
     return keyBtn
 end
 
+-- UI Element Creators
 local function CreateToggle(parent, text, callback, layoutOrder, defaultKeybind)
     local Container = Instance.new("Frame")
     Container.Size = UDim2.new(1, -10, 0, 38)
@@ -1327,7 +1392,7 @@ local function CreateButton(parent, text, callback, layoutOrder, defaultKeybind)
     stroke.Thickness = 1
     stroke.Parent = btn
     AddHover(btn)
-    
+
     btn.MouseButton1Click:Connect(function()
         playClick()
         callback()
@@ -1404,23 +1469,18 @@ local SettingsPage = CreateTab("Settings", "⚙️")
 -- MAIN PAGE
 CreateToggle(MainPage, "Auto Run", function(state)
     autoRun = state
-    Config.autoRun = state
-    SaveConfig()
+    if state then startAutoRun() else stopAutoRun() end
     notify("Auto Run", state and "Enabled" or "Disabled", "info")
 end, 1)
 
 CreateToggle(MainPage, "Player ESP", function(state)
     espEnabled = state
-    Config.espEnabled = state
-    SaveConfig()
     updateESP()
     notify("Player ESP", state and "Enabled" or "Disabled", "info")
 end, 2, "T")
 
 CreateToggle(MainPage, "Pets ESP", function(state)
     petsEspEnabled = state
-    Config.petsEspEnabled = state
-    SaveConfig()
     if not petsEspEnabled then
         for pet, _ in pairs(espTracker) do removePetESP(pet) end
     end
@@ -1429,16 +1489,12 @@ end, 3, "Y")
 
 CreateToggle(MainPage, "Anti Fall", function(state)
     antiFallEnabled = state
-    Config.antiFallEnabled = state
-    SaveConfig()
     if antiFallEnabled then AntiFall = CreateAntiFall() else RemoveAntiFall() end
     notify("Anti Fall", state and "Enabled" or "Disabled", "info")
 end, 4)
 
 CreateToggle(MainPage, "Anti AFK", function(state)
     antiAfkEnabled = state
-    Config.antiAfkEnabled = state
-    SaveConfig()
     if antiAfkEnabled then startAntiAfk() else stopAntiAfk() end
     notify("Anti AFK", state and "Enabled" or "Disabled", "info")
 end, 5)
@@ -1454,16 +1510,12 @@ end, 7, "B")
 -- COMBAT PAGE
 CreateToggle(CombatPage, "Anti Knockback", function(state)
     antiKnockbackEnabled = state
-    Config.antiKnockbackEnabled = state
-    SaveConfig()
     if antiKnockbackEnabled then startAntiKnockback() else stopAntiKnockback() end
     notify("Anti Knockback", state and "Enabled" or "Disabled", "info")
 end, 1, "G")
 
 CreateToggle(CombatPage, "Auto Lock Base", function(state)
     autoLockEnabled = state
-    Config.autoLockEnabled = state
-    SaveConfig()
     if autoLockEnabled then startAutoLock() else stopAutoLock() end
     notify("Auto Lock", state and "Enabled" or "Disabled", "info")
 end, 2)
@@ -1471,6 +1523,7 @@ end, 2)
 --------------------------------------------------
 -- SETTINGS PAGE
 --------------------------------------------------
+-- Save Config Toggle
 local SaveConfigContainer = Instance.new("Frame")
 SaveConfigContainer.Size = UDim2.new(1, -10, 0, 38)
 SaveConfigContainer.BackgroundColor3 = Theme.Card
@@ -1541,6 +1594,7 @@ SaveConfigToggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- Accent Color Section
 local ColorLabel = Instance.new("TextLabel")
 ColorLabel.Size = UDim2.new(1, -10, 0, 20)
 ColorLabel.BackgroundTransparency = 1
@@ -1611,6 +1665,7 @@ for _, preset in ipairs(ColorPresets) do
     end)
 end
 
+-- Info text
 local InfoLabel = Instance.new("TextLabel")
 InfoLabel.Size = UDim2.new(1, -10, 0, 40)
 InfoLabel.BackgroundTransparency = 1
@@ -1628,6 +1683,7 @@ InfoLabel.Parent = SettingsPage
 --------------------------------------------------
 BypassMenu = CreatePopupMenu("BYPASS", 200, 200)
 
+-- Wall Hop Toggle
 local WallHopContainer = Instance.new("Frame")
 WallHopContainer.Size = UDim2.new(0, 180, 0, 35)
 WallHopContainer.Position = UDim2.new(0, 10, 0, 35)
@@ -1709,6 +1765,7 @@ if Config["Wall Hop"] == true then
     end)
 end
 
+-- Enter Base button
 local EnterBaseBtn = Instance.new("TextButton")
 EnterBaseBtn.Size = UDim2.new(0, 180, 0, 30)
 EnterBaseBtn.Position = UDim2.new(0, 10, 0, 80)
@@ -1733,6 +1790,7 @@ EnterBaseBtn.MouseButton1Click:Connect(function()
     notify("Enter Base", "Moving down", "info")
 end)
 
+-- Exit Base button
 local ExitBaseBtn = Instance.new("TextButton")
 ExitBaseBtn.Size = UDim2.new(0, 180, 0, 30)
 ExitBaseBtn.Position = UDim2.new(0, 10, 0, 120)
@@ -1757,6 +1815,7 @@ ExitBaseBtn.MouseButton1Click:Connect(function()
     notify("Exit Base", "Moving up", "info")
 end)
 
+-- Keybinds for Bypass
 CreateKeybindButton(EnterBaseBtn, "Enter Base", "Q", function()
     playClick()
     smoothVerticalMove(DOWN_DISTANCE, -1)
@@ -1842,6 +1901,7 @@ mpsBoxStroke.Color = Theme.Stroke
 mpsBoxStroke.Thickness = 1
 mpsBoxStroke.Parent = mpsBox
 
+-- APPLY button
 local applyBtn = Instance.new("TextButton")
 applyBtn.Size = UDim2.new(0, 95, 0, 28)
 applyBtn.Position = UDim2.new(0.05, 5, 0, 105)
@@ -1875,6 +1935,7 @@ applyBtn.MouseButton1Click:Connect(function()
     notify("Pet Filter", "Applied successfully", "success")
 end)
 
+-- CLEAR button
 local clearBtn = Instance.new("TextButton")
 clearBtn.Size = UDim2.new(0, 95, 0, 28)
 clearBtn.Position = UDim2.new(0.55, 0, 0, 105)
@@ -1905,6 +1966,8 @@ end)
 --------------------------------------------------
 -- SERVER PAGE
 --------------------------------------------------
+local UpdateServerList
+
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -10, 0, 18)
 StatusLabel.BackgroundTransparency = 1
@@ -1937,7 +2000,7 @@ CreateButton(ServerPage, "Copy & Save Job", function()
 end, 1)
 
 CreateButton(ServerPage, "Reconnect", function()
-    TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId, LocalPlayer)
+    SafeTeleport(game.JobId)
 end, 2)
 
 CreateButton(ServerPage, "Join Busy Server", function()
@@ -1948,7 +2011,7 @@ CreateButton(ServerPage, "Join Busy Server", function()
     if Server then
         StatusLabel.Text = "Joining: " .. Server.playing .. "/" .. Server.maxPlayers
         task.wait(0.5)
-        TeleportService:TeleportToPlaceInstance(PlaceId, Server.id, LocalPlayer)
+        SafeTeleport(Server.id)
     else
         StatusLabel.Text = "Not found!"
         notify("Server Hop", "No busy servers found", "warning")
@@ -1964,7 +2027,7 @@ CreateButton(ServerPage, "Join Empty Server", function()
     if Server then
         StatusLabel.Text = "Joining: " .. Server.playing .. "/" .. Server.maxPlayers
         task.wait(0.5)
-        TeleportService:TeleportToPlaceInstance(PlaceId, Server.id, LocalPlayer)
+        SafeTeleport(Server.id)
     else
         StatusLabel.Text = "Not found!"
         notify("Server Hop", "No empty servers found", "warning")
@@ -1972,6 +2035,7 @@ CreateButton(ServerPage, "Join Empty Server", function()
     ServerSearching = false
 end, 4)
 
+-- Separator
 local serverSep = Instance.new("Frame")
 serverSep.Size = UDim2.new(1, -10, 0, 1)
 serverSep.BackgroundColor3 = Theme.Stroke
@@ -1981,6 +2045,7 @@ serverSep.LayoutOrder = 5
 serverSep.Name = "Sep"
 serverSep.Parent = ServerPage
 
+-- Server list container
 local ServerListContainer = Instance.new("Frame")
 ServerListContainer.Size = UDim2.new(1, 0, 0, 0)
 ServerListContainer.BackgroundTransparency = 1
@@ -1996,7 +2061,7 @@ ServerListLayout.Padding = UDim.new(0, 5)
 ServerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ServerListLayout.Parent = ServerListContainer
 
-function UpdateServerList()
+UpdateServerList = function()
     for _, child in ipairs(ServerListContainer:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
     end
@@ -2046,7 +2111,7 @@ function UpdateServerList()
 
         JoinBtn.MouseButton1Click:Connect(function()
             playClick()
-            TeleportService:TeleportToPlaceInstance(PlaceId, Data.JobId, LocalPlayer)
+            SafeTeleport(Data.JobId)
         end)
 
         local DeleteBtn = Instance.new("TextButton")
@@ -2075,7 +2140,8 @@ function UpdateServerList()
     end
 end
 
-task.spawn(function()
+-- Auto-update canvas size
+TrackTask(task.spawn(function()
     while true do
         task.wait(0.5)
         for _, page in pairs(Pages) do
@@ -2085,7 +2151,7 @@ task.spawn(function()
             end
         end
     end
-end)
+end))
 
 --------------------------------------------------
 -- START
