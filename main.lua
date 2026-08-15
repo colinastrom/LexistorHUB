@@ -1,4 +1,4 @@
---// SSSHUB STEAL + MAIN (FIXED)
+--// SSSHUB STEAL + MAIN (FINAL FIX)
 --// By Rosomax0 • Developer
 --// UI REDESIGNED BY ENI
 
@@ -79,7 +79,9 @@ local Theme = {
     Success = Color3.fromRGB(40, 180, 80),
     Warning = Color3.fromRGB(220, 150, 50),
     Error = Color3.fromRGB(200, 60, 60),
-    Info = Color3.fromRGB(80, 120, 220)
+    Info = Color3.fromRGB(80, 120, 220),
+    EnterBase = Color3.fromRGB(45, 120, 220), -- Синий для Enter
+    ExitBase = Color3.fromRGB(220, 80, 80)   -- Красный для Exit
 }
 
 --------------------------------------------------
@@ -241,9 +243,10 @@ end
 --------------------------------------------------
 -- SETTINGS & STATE
 --------------------------------------------------
-local autoRunSpeed = Config.AutoRunSpeed or 38
-local wallHopPower = Config.WallHopPower or 80
-local wallHopDuration = Config.WallHopDuration or 0.3
+-- ИСПРАВЛЕНО: Принудительно устанавливаем дефолтные значения, если в конфиге 0 или nil
+local autoRunSpeed = (Config.AutoRunSpeed and Config.AutoRunSpeed > 0) and Config.AutoRunSpeed or 38
+local wallHopPower = (Config.WallHopPower and Config.WallHopPower > 0) and Config.WallHopPower or 80
+local wallHopDuration = (Config.WallHopDuration and Config.WallHopDuration > 0) and Config.WallHopDuration or 0.3
 
 local UP_DISTANCE = 20
 local DOWN_DISTANCE = 17
@@ -980,20 +983,7 @@ local function CreateToggle(parent, text, callback, layoutOrder, defaultKeybind)
     return Container
 end
 
-local function CreateButton(parent, text, callback, layoutOrder, defaultKeybind)
-    local btn = new("TextButton", {Size = UDim2.new(1, -10, 0, 33), BackgroundColor3 = Theme.Card, BorderSizePixel = 0, Text = text, TextColor3 = Theme.Text, TextSize = 11, Font = Enum.Font.GothamBold, LayoutOrder = layoutOrder or 0, Name = text}, parent)
-    new("UICorner", {CornerRadius = UDim.new(0, 8)}, btn)
-    new("UIStroke", {Color = Theme.Stroke, Thickness = 1}, btn)
-    AddHover(btn)
-
-    btn.MouseButton1Click:Connect(function() playClick(); callback() end)
-
-    if defaultKeybind then
-        CreateKeybindButton(btn, text, defaultKeybind, function() playClick(); callback() end)
-    end
-    return btn
-end
-
+-- ИСПРАВЛЕНО: Knob с ZIndex = 2, чтобы быть поверх Track
 local function CreateSlider(parent, title, min, max, default, callback, layoutOrder)
     local Container = new("Frame", {Size = UDim2.new(1, -10, 0, 45), BackgroundColor3 = Theme.Card, BorderSizePixel = 0, LayoutOrder = layoutOrder or 0}, parent)
     new("UICorner", {CornerRadius = UDim.new(0, 8)}, Container)
@@ -1001,19 +991,19 @@ local function CreateSlider(parent, title, min, max, default, callback, layoutOr
     new("TextLabel", {Size = UDim2.new(0.6, 0, 0, 20), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 11, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left}, Container)
     local ValLbl = new("TextLabel", {Size = UDim2.new(0.4, -10, 0, 20), Position = UDim2.new(0.6, 0, 0, 5), BackgroundTransparency = 1, Text = tostring(default), TextColor3 = Theme.Accent, TextSize = 11, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right}, Container)
 
-    local Track = new("Frame", {Size = UDim2.new(1, -20, 0, 6), Position = UDim2.new(0, 10, 0, 32), BackgroundColor3 = Theme.Background, BorderSizePixel = 0}, Container)
+    local Track = new("Frame", {Size = UDim2.new(1, -20, 0, 6), Position = UDim2.new(0, 10, 0, 32), BackgroundColor3 = Theme.Background, BorderSizePixel = 0, ZIndex = 1}, Container)
     new("UICorner", {CornerRadius = UDim.new(1, 0)}, Track)
 
-    local Fill = new("Frame", {Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0}, Track)
+    local Fill = new("Frame", {Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 1}, Track)
     new("UICorner", {CornerRadius = UDim.new(1, 0)}, Fill)
 
-    local Knob = new("Frame", {Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(Fill.Size.X.Scale, -7, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0}, Track)
+    local Knob = new("Frame", {Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(Fill.Size.X.Scale, -7, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, ZIndex = 2}, Track)
     new("UICorner", {CornerRadius = UDim.new(1, 0)}, Knob)
 
     local dragging = false
     local function update(input)
         local rel = math.clamp((input.Position.X - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
-        local val = math.floor(min + (max - min) * rel)
+        local val = math.clamp(math.floor(min + (max - min) * rel), min, max)
         Fill.Size = UDim2.new(rel, 0, 1, 0)
         Knob.Position = UDim2.new(rel, -7, 0.5, -7)
         ValLbl.Text = tostring(val)
@@ -1035,6 +1025,7 @@ local function CreateSlider(parent, title, min, max, default, callback, layoutOr
     return Container
 end
 
+-- ИСПРАВЛЕНО: Убрано авто-изменение размера, высота фиксированная
 local function CreatePopupMenu(title, width, height)
     local menu = new("Frame", {Size = UDim2.new(0, width, 0, height), Position = UDim2.new(0.5, -width/2, 0.5, -height/2), BackgroundColor3 = Theme.Card, BorderSizePixel = 0, Visible = false, Active = true, ZIndex = 20}, ScreenGui)
     MakeDraggable(menu)
@@ -1048,11 +1039,7 @@ local function CreatePopupMenu(title, width, height)
     closeBtn.MouseButton1Click:Connect(function() playClick(); menu.Visible = false end)
 
     local content = new("Frame", {Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ZIndex = 21, Active = false}, menu)
-    local layout = new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top}, content)
-    
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        menu.Size = UDim2.new(0, width, 0, layout.AbsoluteContentSize.Y + 55)
-    end)
+    new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top}, content)
 
     return menu, content
 end
@@ -1060,7 +1047,8 @@ end
 --------------------------------------------------
 -- BUILD PAGES
 --------------------------------------------------
-local BypassMenu, BypassContent = CreatePopupMenu("BYPASS", 260, 320)
+-- ИСПРАВЛЕНО: Высота BypassMenu уменьшена до 280
+local BypassMenu, BypassContent = CreatePopupMenu("BYPASS", 260, 280)
 local PetFilterMenu, PetFilterContent = CreatePopupMenu("PET FILTERS", 260, 200)
 
 local MainPage = CreateTab("Main", "🏠")
@@ -1216,21 +1204,28 @@ CreateSlider(BypassContent, "Wall Hop Power", 50, 200, wallHopPower, function(va
     SaveConfig()
 end, 2)
 
-CreateSlider(BypassContent, "Wall Hop Duration", 0.1, 1.0, wallHopDuration, function(val)
-    wallHopDuration = val
-    Config.WallHopDuration = val
+CreateSlider(BypassContent, "Wall Hop Duration", 1, 10, math.floor(wallHopDuration * 10), function(val)
+    wallHopDuration = val / 10
+    Config.WallHopDuration = wallHopDuration
     SaveConfig()
 end, 3)
 
-CreateButton(BypassContent, "Enter Base", function()
-    smoothVerticalMove(DOWN_DISTANCE, -1)
-    notify("Enter Base", "Moving down", "info")
-end, 4, "Q")
+-- ИСПРАВЛЕНО: Кнопки с цветами и кастомным ховером
+local EnterBaseBtn = new("TextButton", {Size = UDim2.new(1, -10, 0, 33), BackgroundColor3 = Theme.EnterBase, BorderSizePixel = 0, Text = "Enter Base", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 11, Font = Enum.Font.GothamBold, LayoutOrder = 4, Name = "Enter Base", ZIndex = 21}, BypassContent)
+new("UICorner", {CornerRadius = UDim.new(0, 8)}, EnterBaseBtn)
+new("UIStroke", {Color = Theme.Stroke, Thickness = 1}, EnterBaseBtn)
+AddHover(EnterBaseBtn, Theme.EnterBase, Color3.fromRGB(60, 140, 240))
 
-CreateButton(BypassContent, "Exit Base", function()
-    smoothVerticalMove(UP_DISTANCE, 1)
-    notify("Exit Base", "Moving up", "info")
-end, 5, "R")
+EnterBaseBtn.MouseButton1Click:Connect(function() playClick(); smoothVerticalMove(DOWN_DISTANCE, -1); notify("Enter Base", "Moving down", "info") end)
+CreateKeybindButton(EnterBaseBtn, "Enter Base", "Q", function() playClick(); smoothVerticalMove(DOWN_DISTANCE, -1); notify("Enter Base", "Moving down", "info") end)
+
+local ExitBaseBtn = new("TextButton", {Size = UDim2.new(1, -10, 0, 33), BackgroundColor3 = Theme.ExitBase, BorderSizePixel = 0, Text = "Exit Base", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 11, Font = Enum.Font.GothamBold, LayoutOrder = 5, Name = "Exit Base", ZIndex = 21}, BypassContent)
+new("UICorner", {CornerRadius = UDim.new(0, 8)}, ExitBaseBtn)
+new("UIStroke", {Color = Theme.Stroke, Thickness = 1}, ExitBaseBtn)
+AddHover(ExitBaseBtn, Theme.ExitBase, Color3.fromRGB(240, 100, 100))
+
+ExitBaseBtn.MouseButton1Click:Connect(function() playClick(); smoothVerticalMove(UP_DISTANCE, 1); notify("Exit Base", "Moving up", "info") end)
+CreateKeybindButton(ExitBaseBtn, "Exit Base", "R", function() playClick(); smoothVerticalMove(UP_DISTANCE, 1); notify("Exit Base", "Moving up", "info") end)
 
 --------------------------------------------------
 -- PET FILTER MENU CONTENT
