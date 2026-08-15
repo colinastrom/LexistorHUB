@@ -119,7 +119,6 @@ end
 
 local function corner(p, r) return new("UICorner", {CornerRadius = UDim.new(0, r), Parent = p}) end
 
--- FIXED: AddHover with specific colors
 local function AddHover(btn, baseColor, hoverColor)
     local bc = baseColor or Theme.Card
     local hc = hoverColor or Theme.CardHover
@@ -526,7 +525,6 @@ local function createAntiFall()
 end
 local function removeAntiFall() if AntiFall then AntiFall:Destroy(); AntiFall = nil end end
 
--- FIXED: Recreate AntiFall on respawn
 LP.CharacterAdded:Connect(function()
     task.wait(0.5)
     if State.antiFallEnabled then createAntiFall() end
@@ -570,7 +568,6 @@ local function smoothVerticalMove(dist, dir)
 end
 
 -- Logic: Server Hop
--- FIXED: Concurrency token
 local searchToken = 0
 local function GetServers()
     local all = {}
@@ -620,7 +617,6 @@ local function SaveJobs() SaveJSON(JobsFile, SavedJobs) end
 local ScreenGui = new("ScreenGui", {Name = "SSSHub", ResetOnSpawn = false, DisplayOrder = 999999, Parent = CoreGui})
 
 local Main = new("Frame", {Size = UDim2.new(0, 440, 0, 0), Position = UDim2.new(0.5, -220, 0.5, -155), BackgroundColor3 = Theme.Background, BorderSizePixel = 0, Active = true, Parent = ScreenGui})
-tw(Main, 0.5, {Size = UDim2.new(0, 440, 0, 310)}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 corner(Main, 10)
 new("UIStroke", {Color = Theme.Stroke, Thickness = 1.5, Parent = Main})
 
@@ -678,25 +674,29 @@ new("TextLabel", {Text = "Game Enhancement", TextColor3 = Theme.TextDark, TextSi
 
 local CloseBtn = new("TextButton", {Size = UDim2.new(0, 22, 0, 22), Position = UDim2.new(1, -32, 0, 5), BackgroundColor3 = Color3.fromRGB(80, 30, 30), BorderSizePixel = 0, Text = "X", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 10, Font = Enum.Font.GothamBold, Parent = Header})
 corner(CloseBtn, 6)
-CloseBtn.MouseButton1Click:Connect(function()
-    tw(Main, 0.3, {Size = UDim2.new(0, 440, 0, 0)}, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-    task.wait(0.3)
-    Main.Visible = false
-    ToggleBtnFloat.Visible = true
-    tw(ToggleBtnFloat, 0.3, {Size = UDim2.new(0, 40, 0, 40)}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-end)
 
 local ToggleBtnFloat = new("TextButton", {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0, 20, 0.5, -20), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, Text = "⚡", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 16, Font = Enum.Font.GothamBold, Visible = false, Parent = ScreenGui})
 corner(ToggleBtnFloat, 10)
 table.insert(AccentTracker.Static, ToggleBtnFloat)
-ToggleBtnFloat.MouseButton1Click:Connect(function()
-    tw(ToggleBtnFloat, 0.2, {Size = UDim2.new(0, 0, 0, 0)}):Play()
-    task.wait(0.2)
-    ToggleBtnFloat.Visible = false
-    Main.Visible = true
-    Main.Size = UDim2.new(0, 440, 0, 0)
-    tw(Main, 0.3, {Size = UDim2.new(0, 440, 0, 310)}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-end)
+
+local function toggleUI(show)
+    if show then
+        Main.Visible = true
+        Main.Size = UDim2.new(0, 440, 0, 0)
+        tw(Main, 0.3, {Size = UDim2.new(0, 440, 0, 310)}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        tw(ToggleBtnFloat, 0.2, {Size = UDim2.new(0, 0, 0, 0)})
+        task.delay(0.2, function() ToggleBtnFloat.Visible = false end)
+    else
+        tw(Main, 0.3, {Size = UDim2.new(0, 440, 0, 0)}, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+        task.delay(0.3, function() Main.Visible = false end)
+        ToggleBtnFloat.Visible = true
+        ToggleBtnFloat.Size = UDim2.new(0, 0, 0, 0)
+        tw(ToggleBtnFloat, 0.3, {Size = UDim2.new(0, 40, 0, 40)}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    end
+end
+
+CloseBtn.MouseButton1Click:Connect(function() toggleUI(false) end)
+ToggleBtnFloat.MouseButton1Click:Connect(function() toggleUI(true) end)
 
 local SidebarLayout = new("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 5), Parent = Sidebar})
 local Pages = {}
@@ -736,7 +736,6 @@ local function CreateTab(text, icon)
     local Page = new("ScrollingFrame", {Size = UDim2.new(1, -150, 1, -60), Position = UDim2.new(0, 135, 0, 55), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Theme.Stroke, Visible = false, Parent = Main})
     local PageLayout = new("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = Page})
     
-    -- FIXED: CanvasSize via event
     PageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 20)
     end)
@@ -783,7 +782,6 @@ local function CreateToggle(parent, opts)
     
     ToggleBtn.MouseButton1Click:Connect(function() setToggleState(not state) end)
     
-    -- FIXED: Config restore using camelCase key
     if cfgKey and State[cfgKey] then
         task.spawn(function() task.wait(0.1); setToggleState(true, true) end)
     end
@@ -967,7 +965,6 @@ local mpsBox = new("TextBox", {Text = "0", TextColor3 = Theme.Text, TextSize = 1
 corner(mpsBox, 6)
 new("UIStroke", {Color = Theme.Stroke, Thickness = 1, Parent = mpsBox})
 
--- FIXED: Colored buttons with specific hover colors
 local applyBtn = new("TextButton", {Text = "APPLY", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 10, Font = Enum.Font.GothamBold, BackgroundColor3 = Color3.fromRGB(40, 100, 60), BorderSizePixel = 0, Size = UDim2.new(0, 95, 0, 28), Position = UDim2.new(0, 20, 0, 105), ZIndex = 21, Parent = PetFilterMenu})
 corner(applyBtn, 6)
 AddHover(applyBtn, Color3.fromRGB(40, 100, 60), Color3.fromRGB(50, 120, 70))
@@ -1117,8 +1114,18 @@ for _, preset in ipairs(ColorPresets) do
     end)
 end
 
+-- RIGHTCTRL TOGGLE (ДЛЯ ПК)
+local visible = true
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == Enum.KeyCode.RightControl then
+        visible = not visible
+        toggleUI(visible)
+    end
+end)
+
 -- Init
 switchTab("Main")
 UpdateServerList()
 tw(Main, 0.5, {Size = UDim2.new(0, 440, 0, 310)}, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-notify("SSS HUB", "Welcome! RightCtrl to toggle.", "info")
+notify("SSS HUB", "Welcome! RightCtrl or ⚡ to toggle.", "info")
