@@ -1252,26 +1252,22 @@ local ColorPresets = {
     {name="White",  c=Color3.fromRGB(200,200,210)},
 }
 
-local selectedSwatch = nil
+local selectedSwatchStroke = nil
 for _, preset in ipairs(ColorPresets) do
     local sw = new("TextButton", {Size=UDim2.new(0,28,0,28), BackgroundColor3=preset.c,
         Text="", Parent=colorRow})
     corner(sw, 6)
-    
-    -- Сохраняем stroke в переменную при создании!
     local stroke = new("UIStroke", {Parent=sw, Thickness=0, Color=C.TEXT})
     
     if C.ACC1 == preset.c then
         stroke.Thickness = 2
-        selectedSwatch = sw
-        sw.StrokeRef = stroke -- сохраняем ссылку на обводку
+        selectedSwatchStroke = stroke
     end
-    sw.StrokeRef = stroke
     
     sw.Activated:Connect(function()
-        if selectedSwatch then selectedSwatch.StrokeRef.Thickness = 0 end
+        if selectedSwatchStroke then selectedSwatchStroke.Thickness = 0 end
         stroke.Thickness = 2
-        selectedSwatch = sw
+        selectedSwatchStroke = stroke
         setAccent(preset.c)
         notify("Success", "Accent Color", preset.name)
     end)
