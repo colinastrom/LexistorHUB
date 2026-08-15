@@ -778,26 +778,38 @@ end
 --------------------------------------------------
 local wallHopWasClimbing = false
 local wallHopClearTime = 0
+local wallHopNextTime = 0
 
 TrackConnection(RunService.Heartbeat:Connect(function()
-    if not wallHopEnabled or not rootPart or not humanoid then
+    if not wallHopEnabled or not rootPart or not humanoid or humanoid.Health <= 0 then
         wallHopWasClimbing = false
         return
     end
+
+    local now = os.clock()
+
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
     local forwardDirection = rootPart.CFrame.LookVector
     local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
+
     if result then
         wallHopWasClimbing = true
-        wallHopClearTime = os.clock()
-        local upVel = 20 + math.random(-1, 3)
-        local currentVel = rootPart.AssemblyLinearVelocity
-        rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
+        wallHopClearTime = now
+        if now >= wallHopNextTime then
+            -- случайный интервал 0.08–0.2 сек между "прыжками", как у человека
+            wallHopNextTime = now + 0.08 + math.random() * 0.12
+            local currentVel = rootPart.AssemblyLinearVelocity
+            local upVel = 22 + math.random() * 8 -- случайная сила 22–30
+            rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
+        end
     elseif wallHopWasClimbing then
-        if os.clock() - wallHopClearTime < 0.15 then
-            rootPart.AssemblyLinearVelocity = Vector3.new(forwardDirection.X * 25, 30, forwardDirection.Z * 25)
+        if now - wallHopClearTime < 0.12 then
+            -- не залипаем вверх, а лишь слегка дожимаем вперёд
+            local currentVel = rootPart.AssemblyLinearVelocity
+            rootPart.AssemblyLinearVelocity = Vector3.new(forwardDirection.X * 22, math.max(currentVel.Y, 24), forwardDirection.Z * 22)
         else
             wallHopWasClimbing = false
         end
@@ -827,12 +839,6 @@ local function RemoveAntiFall()
     if AntiFall then AntiFall:Destroy(); AntiFall = nil end
 end
 
-TrackConnection(RunService.Heartbeat:Connect(function()
-    if AntiFall and rootPart then
-        AntiFall.CFrame = CFrame.new(rootPart.Position.X, rootPart.Position.Y - 7, rootPart.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
-    end
-end))
-
 table.insert(CleanupExtra, function()
     pcall(RemoveAntiFall)
 end)
@@ -855,27 +861,49 @@ local baseDebounce = false
 local function smoothVerticalMove(distance, direction)
     if not rootPart or baseDebounce then return end
     baseDebounce = true
-    local startPos = rootPart.Position
-    local targetY = startPos.Y + (distance * direction)
     task.spawn(function()
-        local originalCollide = rootPart.CanCollide
-        pcall(function() rootPart.CanCollide = false end)
-        local steps = math.abs(distance) * 4
+        local char = LocalPlayer.Character
+        if not char or not rootPart then baseDebounce = false return end
+
+        -- отключаем коллизии у ВСЕХ частей тела
+        local collideStates = {}
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                collideStates[part] = part.CanCollide
+                part.CanCollide = false
+            end
+        end
+
+        -- анкорим, чтобы гравитация/физика не боролись со сдвигом
+        local wasAnchored = rootPart.Anchored
+        rootPart.Anchored = true
+
+        local startPos = rootPart.Position
+        local targetY = startPos.Y + (distance * direction)
+        local steps = math.max(math.abs(distance) * 4, 10)
         local stepSize = (distance / steps) * direction
+
         for i = 1, steps do
-            if not rootPart then break end
+            if not rootPart or not rootPart.Parent then break end
             rootPart.CFrame = rootPart.CFrame + Vector3.new(0, stepSize, 0)
-            task.wait(0.005)
+            task.wait(0.01)
         end
-        if rootPart then
+
+        if rootPart and rootPart.Parent then
             rootPart.CFrame = CFrame.new(rootPart.Position.X, targetY, rootPart.Position.Z) * CFrame.Angles(0, math.rad(rootPart.Orientation.Y), 0)
-            pcall(function() rootPart.CanCollide = originalCollide end)
+            rootPart.Anchored = wasAnchored
+            rootPart.AssemblyLinearVelocity = Vector3.zero
         end
+
+        -- возвращаем коллизии как были
+        for part, state in pairs(collideStates) do
+            if part and part.Parent then part.CanCollide = state end
+        end
+
         task.wait(0.2)
         baseDebounce = false
     end)
 end
-
 --------------------------------------------------
 -- SAVED JOB IDS & SERVER HOP
 --------------------------------------------------
