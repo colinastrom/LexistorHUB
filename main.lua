@@ -16,7 +16,7 @@ local PlaceId = game.PlaceId
 local CoreGui = game:GetService("CoreGui")
 
 --------------------------------------------------
--- CLEANUP SYSTEM (защита от дублирования при перезапуске)
+-- CLEANUP SYSTEM
 --------------------------------------------------
 local CleanupConnections = {}
 local CleanupTasks = {}
@@ -284,7 +284,7 @@ local function notify(title, text, notifType)
 end
 
 --------------------------------------------------
--- SOUND (привязан к GUI, не к миру)
+-- SOUND & DRAGGABLE
 --------------------------------------------------
 local ClickSound = Instance.new("Sound")
 ClickSound.SoundId = "rbxassetid://6895056283"
@@ -295,9 +295,6 @@ local function playClick()
     pcall(function() ClickSound:Play() end)
 end
 
---------------------------------------------------
--- DRAGGABLE (фикс утечки коннекшенов)
---------------------------------------------------
 local function MakeDraggable(frame)
     local dragging, dragInput, mousePos, framePos
     TrackConnection(frame.InputBegan:Connect(function(input)
@@ -326,7 +323,7 @@ local function MakeDraggable(frame)
 end
 
 --------------------------------------------------
--- SETTINGS & STATE (единый источник: Config["<Имя тоггла>"])
+-- SETTINGS & STATE
 --------------------------------------------------
 local autoRunSpeed = Config.AutoRunSpeed or 38
 local wallHopPower = Config.WallHopPower or 80
@@ -373,7 +370,7 @@ if LocalPlayer.Character then setupCharacter(LocalPlayer.Character) end
 TrackConnection(LocalPlayer.CharacterAdded:Connect(setupCharacter))
 
 --------------------------------------------------
--- AUTO RUN (цикл живёт только пока включён)
+-- AUTO RUN
 --------------------------------------------------
 local function startAutoRun()
     if autoRunConnection then return end
@@ -695,7 +692,7 @@ table.insert(CleanupExtra, function()
 end)
 
 --------------------------------------------------
--- ANTI KNOCKBACK (мягкое ограничение скорости, без телепортов)
+-- ANTI KNOCKBACK
 --------------------------------------------------
 local function startAntiKnockback()
     if antiKnockbackConnection then return end
@@ -753,9 +750,9 @@ local function startAutoLock()
                     local pad = lockObj:FindFirstChild("Pad")
                     if currentState ~= lastLockState then
                         if currentState == STATE_IDLE then
-                            task.spawn(function() notify("База открыта", "База разблокирована", "warning") end)
+                            notify("База открыта", "База разблокирована", "warning")
                         elseif currentState == STATE_LOCKED then
-                            task.spawn(function() notify("База закрыта", "Auto Lock активирован", "success") end)
+                            notify("База закрыта", "Auto Lock активирован", "success")
                         end
                         lastLockState = currentState
                     end
@@ -777,7 +774,7 @@ local function stopAutoLock()
 end
 
 --------------------------------------------------
--- WALL HOP (Плавный и быстрый через BodyVelocity)
+-- WALL HOP
 --------------------------------------------------
 local wallHopActive = false
 
@@ -801,7 +798,6 @@ TrackConnection(RunService.Heartbeat:Connect(function()
         task.spawn(function()
             local bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(1, 1, 1) * math.huge
-            -- Сила: вверх + немного вперёд (40% от силы вверх)
             bv.Velocity = Vector3.new(forwardDirection.X * (wallHopPower * 0.4), wallHopPower, forwardDirection.Z * (wallHopPower * 0.4))
             bv.Parent = rootPart
 
@@ -810,7 +806,6 @@ TrackConnection(RunService.Heartbeat:Connect(function()
                 if not rootPart or not humanoid or humanoid.Health <= 0 or not wallHopEnabled then
                     break
                 end
-                -- Обновляем направление, если игрок крутит камерой
                 local cam = workspace.CurrentCamera
                 if cam then
                     local look = cam.CFrame.LookVector
@@ -826,7 +821,7 @@ TrackConnection(RunService.Heartbeat:Connect(function()
 end))
 
 --------------------------------------------------
--- ANTI FALL (следует за игроком), ANTI AFK, ENTER/EXIT BASE
+-- ANTI FALL, ANTI AFK, ENTER/EXIT BASE
 --------------------------------------------------
 local function CreateAntiFall()
     if not rootPart then return nil end
@@ -1139,11 +1134,7 @@ local TabButtons = {}
 
 local function switchTab(tabName)
     for name, page in pairs(Pages) do
-        if name == tabName then
-            page.Visible = true
-        else
-            page.Visible = false
-        end
+        page.Visible = (name == tabName)
     end
     for name, data in pairs(TabButtons) do
         if name == tabName then
@@ -1222,12 +1213,15 @@ TabSeparator.BackgroundColor3 = Theme.Stroke
 TabSeparator.BorderSizePixel = 0
 TabSeparator.Parent = Sidebar
 
-local function AddHover(btn)
+-- ИСПРАВЛЕНО: AddHover с сохранением цвета
+local function AddHover(btn, baseColor, hoverColor)
+    local bc = baseColor or Theme.Card
+    local hc = hoverColor or Theme.CardHover
     btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.CardHover}):Play()
+        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = hc}):Play()
     end)
     btn.MouseLeave:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Card}):Play()
+        TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = bc}):Play()
     end)
 end
 
@@ -1303,7 +1297,6 @@ local function CreateKeybindButton(parent, name, defaultKey, callback)
     return keyBtn
 end
 
--- UI Element Creators
 local function CreateToggle(parent, text, callback, layoutOrder, defaultKeybind)
     local Container = Instance.new("Frame")
     Container.Size = UDim2.new(1, -10, 0, 38)
@@ -1433,12 +1426,12 @@ local function CreateButton(parent, text, callback, layoutOrder, defaultKeybind)
     return btn
 end
 
-local function CreateSlider(parent, title, min, max, default, callback, layoutOrder, pos)
+local function CreateSlider(parent, title, min, max, default, callback, layoutOrder)
     local Container = Instance.new("Frame")
     Container.Size = UDim2.new(1, -10, 0, 45)
-    if pos then Container.Position = pos else Container.LayoutOrder = layoutOrder or 0 end
     Container.BackgroundColor3 = Theme.Card
     Container.BorderSizePixel = 0
+    Container.LayoutOrder = layoutOrder or 0
     Container.Parent = parent
 
     local Corner = Instance.new("UICorner")
@@ -1535,6 +1528,7 @@ local function CreateSlider(parent, title, min, max, default, callback, layoutOr
     return Container
 end
 
+-- ИСПРАВЛЕНО: CreatePopupMenu возвращает контент-фрейм для автосписка
 local function CreatePopupMenu(title, width, height)
     local menu = Instance.new("Frame")
     menu.Size = UDim2.new(0, width, 0, height)
@@ -1546,13 +1540,16 @@ local function CreatePopupMenu(title, width, height)
     menu.ZIndex = 20
     menu.Parent = ScreenGui
     MakeDraggable(menu)
+    
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = menu
+    
     local stroke = Instance.new("UIStroke")
     stroke.Color = Theme.Stroke
     stroke.Thickness = 1.5
     stroke.Parent = menu
+    
     local titleLbl = Instance.new("TextLabel")
     titleLbl.Size = UDim2.new(1, -10, 0, 25)
     titleLbl.Position = UDim2.new(0, 10, 0, 5)
@@ -1564,6 +1561,7 @@ local function CreatePopupMenu(title, width, height)
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
     titleLbl.ZIndex = 21
     titleLbl.Parent = menu
+    
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 20, 0, 20)
     closeBtn.Position = UDim2.new(1, -25, 0, 5)
@@ -1575,18 +1573,34 @@ local function CreatePopupMenu(title, width, height)
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.ZIndex = 21
     closeBtn.Parent = menu
+    
     local closeCorner = Instance.new("UICorner")
     closeCorner.CornerRadius = UDim.new(0, 5)
     closeCorner.Parent = closeBtn
     closeBtn.MouseButton1Click:Connect(function() playClick() menu.Visible = false end)
-    return menu
+
+    local content = Instance.new("Frame")
+    content.Size = UDim2.new(1, -20, 1, -45)
+    content.Position = UDim2.new(0, 10, 0, 35)
+    content.BackgroundTransparency = 1
+    content.ZIndex = 21
+    content.Parent = menu
+
+    new("UIListLayout", {
+        Padding = UDim.new(0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        VerticalAlignment = Enum.VerticalAlignment.Top
+    }, content)
+
+    return menu, content
 end
 
 --------------------------------------------------
 -- BUILD PAGES
 --------------------------------------------------
-local BypassMenu
-local PetFilterMenu
+local BypassMenu, BypassContent = CreatePopupMenu("BYPASS", 260, 320)
+local PetFilterMenu, PetFilterContent = CreatePopupMenu("PET FILTERS", 260, 200)
 
 local MainPage = CreateTab("Main", "🏠")
 local CombatPage = CreateTab("Combat", "⚔️")
@@ -1779,7 +1793,7 @@ for _, preset in ipairs(ColorPresets) do
     swatchStroke.Thickness = 0
     swatchStroke.Parent = swatch
 
-    AddHover(swatch)
+    AddHover(swatch, preset.color, preset.color)
 
     if CurrentAccent == preset.color then
         swatchStroke.Thickness = 2
@@ -1809,115 +1823,51 @@ InfoLabel.LayoutOrder = 4
 InfoLabel.Parent = SettingsPage
 
 --------------------------------------------------
--- BYPASS MENU
+-- BYPASS MENU CONTENT
 --------------------------------------------------
-BypassMenu = CreatePopupMenu("BYPASS", 260, 280)
-
-local WallHopContainer = CreateToggle(BypassMenu, "Wall Hop", function(state)
+CreateToggle(BypassContent, "Wall Hop", function(state)
     wallHopEnabled = state
     notify("Wall Hop", state and "Enabled" or "Disabled", "info")
-end, nil, UDim2.new(0, 10, 0, 35))
-WallHopContainer.Size = UDim2.new(0, 240, 0, 35)
-WallHopContainer.BackgroundColor3 = Theme.Background
-WallHopContainer.ZIndex = 21
-for _, d in ipairs(WallHopContainer:GetDescendants()) do
-    if d:IsA("GuiObject") then d.ZIndex = 22 end
-end
+end, 1)
 
-CreateSlider(BypassMenu, "Wall Hop Power", 50, 200, wallHopPower, function(val)
+CreateSlider(BypassContent, "Wall Hop Power", 50, 200, wallHopPower, function(val)
     wallHopPower = val
     Config.WallHopPower = val
     SaveConfig()
-end, nil, UDim2.new(0, 10, 0, 75))
+end, 2)
 
-CreateSlider(BypassMenu, "Wall Hop Duration", 0.1, 1.0, wallHopDuration, function(val)
+CreateSlider(BypassContent, "Wall Hop Duration", 0.1, 1.0, wallHopDuration, function(val)
     wallHopDuration = val
     Config.WallHopDuration = val
     SaveConfig()
-end, nil, UDim2.new(0, 10, 0, 130))
+end, 3)
 
--- Enter Base button
-local EnterBaseBtn = Instance.new("TextButton")
-EnterBaseBtn.Size = UDim2.new(0, 240, 0, 30)
-EnterBaseBtn.Position = UDim2.new(0, 10, 0, 190)
-EnterBaseBtn.BackgroundColor3 = Theme.Background
-EnterBaseBtn.BorderSizePixel = 0
-EnterBaseBtn.Text = "Enter Base"
-EnterBaseBtn.TextColor3 = Theme.Text
-EnterBaseBtn.TextSize = 11
-EnterBaseBtn.Font = Enum.Font.GothamBold
-EnterBaseBtn.ZIndex = 21
-EnterBaseBtn.Parent = BypassMenu
-
-local EnterBaseCorner = Instance.new("UICorner")
-EnterBaseCorner.CornerRadius = UDim.new(0, 6)
-EnterBaseCorner.Parent = EnterBaseBtn
-
-AddHover(EnterBaseBtn)
-
-EnterBaseBtn.MouseButton1Click:Connect(function()
-    playClick()
+CreateButton(BypassContent, "Enter Base", function()
     smoothVerticalMove(DOWN_DISTANCE, -1)
     notify("Enter Base", "Moving down", "info")
-end)
+end, 4, "Q")
 
--- Exit Base button
-local ExitBaseBtn = Instance.new("TextButton")
-ExitBaseBtn.Size = UDim2.new(0, 240, 0, 30)
-ExitBaseBtn.Position = UDim2.new(0, 10, 0, 230)
-ExitBaseBtn.BackgroundColor3 = Theme.Background
-ExitBaseBtn.BorderSizePixel = 0
-ExitBaseBtn.Text = "Exit Base"
-ExitBaseBtn.TextColor3 = Theme.Text
-ExitBaseBtn.TextSize = 11
-ExitBaseBtn.Font = Enum.Font.GothamBold
-ExitBaseBtn.ZIndex = 21
-ExitBaseBtn.Parent = BypassMenu
-
-local ExitBaseCorner = Instance.new("UICorner")
-ExitBaseCorner.CornerRadius = UDim.new(0, 6)
-ExitBaseCorner.Parent = ExitBaseBtn
-
-AddHover(ExitBaseBtn)
-
-ExitBaseBtn.MouseButton1Click:Connect(function()
-    playClick()
+CreateButton(BypassContent, "Exit Base", function()
     smoothVerticalMove(UP_DISTANCE, 1)
     notify("Exit Base", "Moving up", "info")
-end)
-
-CreateKeybindButton(EnterBaseBtn, "Enter Base", "Q", function()
-    playClick()
-    smoothVerticalMove(DOWN_DISTANCE, -1)
-    notify("Enter Base", "Moving down", "info")
-end)
-
-CreateKeybindButton(ExitBaseBtn, "Exit Base", "R", function()
-    playClick()
-    smoothVerticalMove(UP_DISTANCE, 1)
-    notify("Exit Base", "Moving up", "info")
-end)
+end, 5, "R")
 
 --------------------------------------------------
--- PET FILTER MENU
+-- PET FILTER MENU CONTENT
 --------------------------------------------------
-PetFilterMenu = CreatePopupMenu("PET FILTERS", 240, 160)
-
 local filterNameLbl = Instance.new("TextLabel")
-filterNameLbl.Size = UDim2.new(0.4, 0, 0, 18)
-filterNameLbl.Position = UDim2.new(0, 10, 0, 35)
+filterNameLbl.Size = UDim2.new(1, 0, 0, 20)
 filterNameLbl.BackgroundTransparency = 1
 filterNameLbl.Text = "Name:"
 filterNameLbl.TextColor3 = Theme.TextDark
 filterNameLbl.TextSize = 10
 filterNameLbl.Font = Enum.Font.Gotham
 filterNameLbl.TextXAlignment = Enum.TextXAlignment.Left
-filterNameLbl.ZIndex = 21
-filterNameLbl.Parent = PetFilterMenu
+filterNameLbl.LayoutOrder = 1
+filterNameLbl.Parent = PetFilterContent
 
 local nameBox = Instance.new("TextBox")
-nameBox.Size = UDim2.new(0.55, 0, 0, 22)
-nameBox.Position = UDim2.new(0.4, 0, 0, 33)
+nameBox.Size = UDim2.new(1, 0, 0, 25)
 nameBox.BackgroundColor3 = Theme.Background
 nameBox.BorderSizePixel = 0
 nameBox.Text = ""
@@ -1926,8 +1876,8 @@ nameBox.TextColor3 = Theme.Text
 nameBox.PlaceholderColor3 = Theme.TextDark
 nameBox.TextSize = 10
 nameBox.Font = Enum.Font.Gotham
-nameBox.ZIndex = 21
-nameBox.Parent = PetFilterMenu
+nameBox.LayoutOrder = 2
+nameBox.Parent = PetFilterContent
 
 local nameBoxCorner = Instance.new("UICorner")
 nameBoxCorner.CornerRadius = UDim.new(0, 6)
@@ -1939,28 +1889,26 @@ nameBoxStroke.Thickness = 1
 nameBoxStroke.Parent = nameBox
 
 local filterMpsLbl = Instance.new("TextLabel")
-filterMpsLbl.Size = UDim2.new(0.4, 0, 0, 18)
-filterMpsLbl.Position = UDim2.new(0, 10, 0, 65)
+filterMpsLbl.Size = UDim2.new(1, 0, 0, 20)
 filterMpsLbl.BackgroundTransparency = 1
 filterMpsLbl.Text = "Min MPS:"
 filterMpsLbl.TextColor3 = Theme.TextDark
 filterMpsLbl.TextSize = 10
 filterMpsLbl.Font = Enum.Font.Gotham
 filterMpsLbl.TextXAlignment = Enum.TextXAlignment.Left
-filterMpsLbl.ZIndex = 21
-filterMpsLbl.Parent = PetFilterMenu
+filterMpsLbl.LayoutOrder = 3
+filterMpsLbl.Parent = PetFilterContent
 
 local mpsBox = Instance.new("TextBox")
-mpsBox.Size = UDim2.new(0.55, 0, 0, 22)
-mpsBox.Position = UDim2.new(0.4, 0, 0, 63)
+mpsBox.Size = UDim2.new(1, 0, 0, 25)
 mpsBox.BackgroundColor3 = Theme.Background
 mpsBox.BorderSizePixel = 0
 mpsBox.Text = "0"
 mpsBox.TextColor3 = Theme.Text
 mpsBox.TextSize = 10
 mpsBox.Font = Enum.Font.Gotham
-mpsBox.ZIndex = 21
-mpsBox.Parent = PetFilterMenu
+mpsBox.LayoutOrder = 4
+mpsBox.Parent = PetFilterContent
 
 local mpsBoxCorner = Instance.new("UICorner")
 mpsBoxCorner.CornerRadius = UDim.new(0, 6)
@@ -1971,23 +1919,28 @@ mpsBoxStroke.Color = Theme.Stroke
 mpsBoxStroke.Thickness = 1
 mpsBoxStroke.Parent = mpsBox
 
+local ButtonRow = Instance.new("Frame")
+ButtonRow.Size = UDim2.new(1, 0, 0, 30)
+ButtonRow.BackgroundTransparency = 1
+ButtonRow.LayoutOrder = 5
+ButtonRow.Parent = PetFilterContent
+new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), Parent = ButtonRow})
+
 local applyBtn = Instance.new("TextButton")
-applyBtn.Size = UDim2.new(0, 95, 0, 28)
-applyBtn.Position = UDim2.new(0.05, 5, 0, 105)
+applyBtn.Size = UDim2.new(0.5, -4, 1, 0)
 applyBtn.BackgroundColor3 = Color3.fromRGB(40, 100, 60)
 applyBtn.BorderSizePixel = 0
 applyBtn.Text = "APPLY"
 applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 applyBtn.TextSize = 10
 applyBtn.Font = Enum.Font.GothamBold
-applyBtn.ZIndex = 21
-applyBtn.Parent = PetFilterMenu
+applyBtn.Parent = ButtonRow
 
 local applyCorner = Instance.new("UICorner")
 applyCorner.CornerRadius = UDim.new(0, 6)
 applyCorner.Parent = applyBtn
 
-AddHover(applyBtn)
+AddHover(applyBtn, Color3.fromRGB(40, 100, 60), Color3.fromRGB(50, 120, 70))
 
 applyBtn.MouseButton1Click:Connect(function()
     playClick()
@@ -2005,22 +1958,20 @@ applyBtn.MouseButton1Click:Connect(function()
 end)
 
 local clearBtn = Instance.new("TextButton")
-clearBtn.Size = UDim2.new(0, 95, 0, 28)
-clearBtn.Position = UDim2.new(0.55, 0, 0, 105)
+clearBtn.Size = UDim2.new(0.5, -4, 1, 0)
 clearBtn.BackgroundColor3 = Color3.fromRGB(100, 40, 40)
 clearBtn.BorderSizePixel = 0
 clearBtn.Text = "CLEAR"
 clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 clearBtn.TextSize = 10
 clearBtn.Font = Enum.Font.GothamBold
-clearBtn.ZIndex = 21
-clearBtn.Parent = PetFilterMenu
+clearBtn.Parent = ButtonRow
 
 local clearCorner = Instance.new("UICorner")
 clearCorner.CornerRadius = UDim.new(0, 6)
 clearCorner.Parent = clearBtn
 
-AddHover(clearBtn)
+AddHover(clearBtn, Color3.fromRGB(100, 40, 40), Color3.fromRGB(120, 50, 50))
 
 clearBtn.MouseButton1Click:Connect(function()
     playClick()
@@ -2169,7 +2120,7 @@ UpdateServerList = function()
         JoinBtn.TextSize = 9
         JoinBtn.Font = Enum.Font.GothamBold
         JoinBtn.Parent = Row
-        AddHover(JoinBtn)
+        AddHover(JoinBtn, Color3.fromRGB(40, 80, 50), Color3.fromRGB(50, 100, 60))
 
         local JoinCorner = Instance.new("UICorner")
         JoinCorner.CornerRadius = UDim.new(0, 4)
@@ -2190,7 +2141,7 @@ UpdateServerList = function()
         DeleteBtn.TextSize = 9
         DeleteBtn.Font = Enum.Font.GothamBold
         DeleteBtn.Parent = Row
-        AddHover(DeleteBtn)
+        AddHover(DeleteBtn, Color3.fromRGB(80, 40, 40), Color3.fromRGB(100, 50, 50))
 
         local DelCorner = Instance.new("UICorner")
         DelCorner.CornerRadius = UDim.new(0, 4)
