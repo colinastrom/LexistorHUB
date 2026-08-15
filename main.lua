@@ -156,7 +156,7 @@ end
 --------------------------------------------------
 -- NOTIFICATION SYSTEM
 --------------------------------------------------
-local NotifyGui = new("ScreenGui", {Name = "SSSNotify", ResetOnSpawn = false, DisplayOrder = 999999}, CoreGui)
+local NotifyGui = new("ScreenGui", {Name = "SSSNotify", ResetOnSpawn = false, DisplayOrder = 999999, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, CoreGui)
 
 local NotifyHolder = new("Frame", {Size = UDim2.new(0, 300, 0, 0), Position = UDim2.new(1, -320, 0, 20), BackgroundTransparency = 1, Active = false, AutomaticSize = Enum.AutomaticSize.Y}, NotifyGui)
 new("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, HorizontalAlignment = Enum.HorizontalAlignment.Right, VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 10)}, NotifyHolder)
@@ -776,7 +776,7 @@ end
 --------------------------------------------------
 -- UI FRAMEWORK
 --------------------------------------------------
-local ScreenGui = new("ScreenGui", {Name = "SSSHubSteal", ResetOnSpawn = false, DisplayOrder = 999999}, CoreGui)
+local ScreenGui = new("ScreenGui", {Name = "SSSHubSteal", ResetOnSpawn = false, DisplayOrder = 999998, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, CoreGui)
 
 local ToggleBtnFloat = new("TextButton", {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0, 20, 0.5, -20), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, Text = "⚡", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 16, Font = Enum.Font.GothamBold, Visible = false}, ScreenGui)
 new("UICorner", {CornerRadius = UDim.new(0, 10)}, ToggleBtnFloat)
@@ -865,7 +865,6 @@ local function CreateTab(text, icon)
     local Page = new("ScrollingFrame", {Size = UDim2.new(1, -150, 1, -60), Position = UDim2.new(0, 135, 0, 55), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Theme.Stroke, Visible = false, CanvasSize = UDim2.new(0, 0, 0, 0)}, Main)
     local PageLayout = new("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, Page)
     
-    -- ИСПРАВЛЕНО: Автоматическое обновление размера через событие
     PageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 20)
     end)
@@ -1036,7 +1035,6 @@ local function CreateSlider(parent, title, min, max, default, callback, layoutOr
     return Container
 end
 
--- ИСПРАВЛЕНО: CreatePopupMenu возвращает контент-фрейм для автосписка
 local function CreatePopupMenu(title, width, height)
     local menu = new("Frame", {Size = UDim2.new(0, width, 0, height), Position = UDim2.new(0.5, -width/2, 0.5, -height/2), BackgroundColor3 = Theme.Card, BorderSizePixel = 0, Visible = false, Active = true, ZIndex = 20}, ScreenGui)
     MakeDraggable(menu)
@@ -1049,10 +1047,9 @@ local function CreatePopupMenu(title, width, height)
     new("UICorner", {CornerRadius = UDim.new(0, 5)}, closeBtn)
     closeBtn.MouseButton1Click:Connect(function() playClick(); menu.Visible = false end)
 
-    local content = new("Frame", {Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ZIndex = 21}, menu)
+    local content = new("Frame", {Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ZIndex = 21, Active = false}, menu)
     local layout = new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top}, content)
     
-    -- ИСПРАВЛЕНО: Автоматическое обновление размера для попапов
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         menu.Size = UDim2.new(0, width, 0, layout.AbsoluteContentSize.Y + 55)
     end)
@@ -1250,7 +1247,7 @@ local mpsBox = new("TextBox", {Size = UDim2.new(1, 0, 0, 25), BackgroundColor3 =
 new("UICorner", {CornerRadius = UDim.new(0, 6)}, mpsBox)
 new("UIStroke", {Color = Theme.Stroke, Thickness = 1}, mpsBox)
 
-local ButtonRow = new("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, LayoutOrder = 5}, PetFilterContent)
+local ButtonRow = new("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, LayoutOrder = 5, Active = false}, PetFilterContent)
 new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8)}, ButtonRow)
 
 local applyBtn = new("TextButton", {Size = UDim2.new(0.5, -4, 1, 0), BackgroundColor3 = Color3.fromRGB(40, 100, 60), BorderSizePixel = 0, Text = "APPLY", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 10, Font = Enum.Font.GothamBold}, ButtonRow)
