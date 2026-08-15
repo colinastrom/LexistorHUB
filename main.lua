@@ -47,11 +47,13 @@ env.SSSHubCleanup = function()
     end
     if CoreGui:FindFirstChild("SSSHubSteal") then CoreGui.SSSHubSteal:Destroy() end
     if CoreGui:FindFirstChild("SSSNotify") then CoreGui.SSSNotify:Destroy() end
+    if CoreGui:FindFirstChild("SSSPopups") then CoreGui.SSSPopups:Destroy() end
     env.SSSHubCleanup = nil
 end
 
 if CoreGui:FindFirstChild("SSSHubSteal") then CoreGui.SSSHubSteal:Destroy() end
 if CoreGui:FindFirstChild("SSSNotify") then CoreGui.SSSNotify:Destroy() end
+if CoreGui:FindFirstChild("SSSPopups") then CoreGui.SSSPopups:Destroy() end
 
 --------------------------------------------------
 -- HELPERS
@@ -80,8 +82,8 @@ local Theme = {
     Warning = Color3.fromRGB(220, 150, 50),
     Error = Color3.fromRGB(200, 60, 60),
     Info = Color3.fromRGB(80, 120, 220),
-    EnterBase = Color3.fromRGB(45, 120, 220), -- Синий для Enter
-    ExitBase = Color3.fromRGB(220, 80, 80)   -- Красный для Exit
+    EnterBase = Color3.fromRGB(45, 120, 220),
+    ExitBase = Color3.fromRGB(220, 80, 80)
 }
 
 --------------------------------------------------
@@ -156,10 +158,15 @@ if Config.AccentColor then
 end
 
 --------------------------------------------------
+-- GUI LAYERS (Раздельные ScreenGui для правильного наложения)
+--------------------------------------------------
+local ScreenGui = new("ScreenGui", {Name = "SSSHubSteal", ResetOnSpawn = false, DisplayOrder = 999998}, CoreGui)
+local PopupGui = new("ScreenGui", {Name = "SSSPopups", ResetOnSpawn = false, DisplayOrder = 1000000}, CoreGui)
+local NotifyGui = new("ScreenGui", {Name = "SSSNotify", ResetOnSpawn = false, DisplayOrder = 1000001}, CoreGui)
+
+--------------------------------------------------
 -- NOTIFICATION SYSTEM
 --------------------------------------------------
-local NotifyGui = new("ScreenGui", {Name = "SSSNotify", ResetOnSpawn = false, DisplayOrder = 999999, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, CoreGui)
-
 local NotifyHolder = new("Frame", {Size = UDim2.new(0, 300, 0, 0), Position = UDim2.new(1, -320, 0, 20), BackgroundTransparency = 1, Active = false, AutomaticSize = Enum.AutomaticSize.Y}, NotifyGui)
 new("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, HorizontalAlignment = Enum.HorizontalAlignment.Right, VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 10)}, NotifyHolder)
 
@@ -243,7 +250,6 @@ end
 --------------------------------------------------
 -- SETTINGS & STATE
 --------------------------------------------------
--- ИСПРАВЛЕНО: Принудительно устанавливаем дефолтные значения, если в конфиге 0 или nil
 local autoRunSpeed = (Config.AutoRunSpeed and Config.AutoRunSpeed > 0) and Config.AutoRunSpeed or 38
 local wallHopPower = (Config.WallHopPower and Config.WallHopPower > 0) and Config.WallHopPower or 80
 local wallHopDuration = (Config.WallHopDuration and Config.WallHopDuration > 0) and Config.WallHopDuration or 0.3
@@ -779,8 +785,6 @@ end
 --------------------------------------------------
 -- UI FRAMEWORK
 --------------------------------------------------
-local ScreenGui = new("ScreenGui", {Name = "SSSHubSteal", ResetOnSpawn = false, DisplayOrder = 999998, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, CoreGui)
-
 local ToggleBtnFloat = new("TextButton", {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0, 20, 0.5, -20), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, Text = "⚡", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 16, Font = Enum.Font.GothamBold, Visible = false}, ScreenGui)
 new("UICorner", {CornerRadius = UDim.new(0, 10)}, ToggleBtnFloat)
 new("UIStroke", {Color = Theme.Stroke, Thickness = 1.5}, ToggleBtnFloat)
@@ -866,11 +870,7 @@ local function CreateTab(text, icon)
     end)
 
     local Page = new("ScrollingFrame", {Size = UDim2.new(1, -150, 1, -60), Position = UDim2.new(0, 135, 0, 55), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 2, ScrollBarImageColor3 = Theme.Stroke, Visible = false, CanvasSize = UDim2.new(0, 0, 0, 0)}, Main)
-    local PageLayout = new("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, Page)
-    
-    PageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 20)
-    end)
+    new("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, Page)
 
     Pages[text] = Page
     TabButtons[text] = {btn = TabBtn, isActive = false}
@@ -983,7 +983,6 @@ local function CreateToggle(parent, text, callback, layoutOrder, defaultKeybind)
     return Container
 end
 
--- ИСПРАВЛЕНО: Knob с ZIndex = 2, чтобы быть поверх Track
 local function CreateSlider(parent, title, min, max, default, callback, layoutOrder)
     local Container = new("Frame", {Size = UDim2.new(1, -10, 0, 45), BackgroundColor3 = Theme.Card, BorderSizePixel = 0, LayoutOrder = layoutOrder or 0}, parent)
     new("UICorner", {CornerRadius = UDim.new(0, 8)}, Container)
@@ -991,13 +990,13 @@ local function CreateSlider(parent, title, min, max, default, callback, layoutOr
     new("TextLabel", {Size = UDim2.new(0.6, 0, 0, 20), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 11, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left}, Container)
     local ValLbl = new("TextLabel", {Size = UDim2.new(0.4, -10, 0, 20), Position = UDim2.new(0.6, 0, 0, 5), BackgroundTransparency = 1, Text = tostring(default), TextColor3 = Theme.Accent, TextSize = 11, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Right}, Container)
 
-    local Track = new("Frame", {Size = UDim2.new(1, -20, 0, 6), Position = UDim2.new(0, 10, 0, 32), BackgroundColor3 = Theme.Background, BorderSizePixel = 0, ZIndex = 1}, Container)
+    local Track = new("Frame", {Size = UDim2.new(1, -20, 0, 6), Position = UDim2.new(0, 10, 0, 32), BackgroundColor3 = Theme.Background, BorderSizePixel = 0}, Container)
     new("UICorner", {CornerRadius = UDim.new(1, 0)}, Track)
 
-    local Fill = new("Frame", {Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 1}, Track)
+    local Fill = new("Frame", {Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0}, Track)
     new("UICorner", {CornerRadius = UDim.new(1, 0)}, Fill)
 
-    local Knob = new("Frame", {Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(Fill.Size.X.Scale, -7, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, ZIndex = 2}, Track)
+    local Knob = new("Frame", {Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(Fill.Size.X.Scale, -7, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0}, Track)
     new("UICorner", {CornerRadius = UDim.new(1, 0)}, Knob)
 
     local dragging = false
@@ -1025,20 +1024,20 @@ local function CreateSlider(parent, title, min, max, default, callback, layoutOr
     return Container
 end
 
--- ИСПРАВЛЕНО: Убрано авто-изменение размера, высота фиксированная
+-- ИСПРАВЛЕНО: Меню создаются в отдельном PopupGui
 local function CreatePopupMenu(title, width, height)
-    local menu = new("Frame", {Size = UDim2.new(0, width, 0, height), Position = UDim2.new(0.5, -width/2, 0.5, -height/2), BackgroundColor3 = Theme.Card, BorderSizePixel = 0, Visible = false, Active = true, ZIndex = 20}, ScreenGui)
+    local menu = new("Frame", {Size = UDim2.new(0, width, 0, height), Position = UDim2.new(0.5, -width/2, 0.5, -height/2), BackgroundColor3 = Theme.Card, BorderSizePixel = 0, Visible = false, Active = true}, PopupGui)
     MakeDraggable(menu)
     new("UICorner", {CornerRadius = UDim.new(0, 8)}, menu)
     new("UIStroke", {Color = Theme.Stroke, Thickness = 1.5}, menu)
     
-    new("TextLabel", {Size = UDim2.new(1, -10, 0, 25), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 12, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 21}, menu)
+    new("TextLabel", {Size = UDim2.new(1, -10, 0, 25), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = title, TextColor3 = Theme.Text, TextSize = 12, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left}, menu)
     
-    local closeBtn = new("TextButton", {Size = UDim2.new(0, 20, 0, 20), Position = UDim2.new(1, -25, 0, 5), BackgroundColor3 = Color3.fromRGB(80, 30, 30), BorderSizePixel = 0, Text = "X", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 9, Font = Enum.Font.GothamBold, ZIndex = 21}, menu)
+    local closeBtn = new("TextButton", {Size = UDim2.new(0, 20, 0, 20), Position = UDim2.new(1, -25, 0, 5), BackgroundColor3 = Color3.fromRGB(80, 30, 30), BorderSizePixel = 0, Text = "X", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 9, Font = Enum.Font.GothamBold}, menu)
     new("UICorner", {CornerRadius = UDim.new(0, 5)}, closeBtn)
     closeBtn.MouseButton1Click:Connect(function() playClick(); menu.Visible = false end)
 
-    local content = new("Frame", {Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, ZIndex = 21, Active = false}, menu)
+    local content = new("Frame", {Size = UDim2.new(1, -20, 1, -45), Position = UDim2.new(0, 10, 0, 35), BackgroundTransparency = 1, Active = false}, menu)
     new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Top}, content)
 
     return menu, content
@@ -1047,7 +1046,6 @@ end
 --------------------------------------------------
 -- BUILD PAGES
 --------------------------------------------------
--- ИСПРАВЛЕНО: Высота BypassMenu уменьшена до 280
 local BypassMenu, BypassContent = CreatePopupMenu("BYPASS", 260, 280)
 local PetFilterMenu, PetFilterContent = CreatePopupMenu("PET FILTERS", 260, 200)
 
@@ -1210,8 +1208,8 @@ CreateSlider(BypassContent, "Wall Hop Duration", 1, 10, math.floor(wallHopDurati
     SaveConfig()
 end, 3)
 
--- ИСПРАВЛЕНО: Кнопки с цветами и кастомным ховером
-local EnterBaseBtn = new("TextButton", {Size = UDim2.new(1, -10, 0, 33), BackgroundColor3 = Theme.EnterBase, BorderSizePixel = 0, Text = "Enter Base", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 11, Font = Enum.Font.GothamBold, LayoutOrder = 4, Name = "Enter Base", ZIndex = 21}, BypassContent)
+-- ИСПРАВЛЕНО: Кнопки с цветами
+local EnterBaseBtn = new("TextButton", {Size = UDim2.new(1, -10, 0, 33), BackgroundColor3 = Theme.EnterBase, BorderSizePixel = 0, Text = "Enter Base", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 11, Font = Enum.Font.GothamBold, LayoutOrder = 4, Name = "Enter Base"}, BypassContent)
 new("UICorner", {CornerRadius = UDim.new(0, 8)}, EnterBaseBtn)
 new("UIStroke", {Color = Theme.Stroke, Thickness = 1}, EnterBaseBtn)
 AddHover(EnterBaseBtn, Theme.EnterBase, Color3.fromRGB(60, 140, 240))
@@ -1219,7 +1217,7 @@ AddHover(EnterBaseBtn, Theme.EnterBase, Color3.fromRGB(60, 140, 240))
 EnterBaseBtn.MouseButton1Click:Connect(function() playClick(); smoothVerticalMove(DOWN_DISTANCE, -1); notify("Enter Base", "Moving down", "info") end)
 CreateKeybindButton(EnterBaseBtn, "Enter Base", "Q", function() playClick(); smoothVerticalMove(DOWN_DISTANCE, -1); notify("Enter Base", "Moving down", "info") end)
 
-local ExitBaseBtn = new("TextButton", {Size = UDim2.new(1, -10, 0, 33), BackgroundColor3 = Theme.ExitBase, BorderSizePixel = 0, Text = "Exit Base", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 11, Font = Enum.Font.GothamBold, LayoutOrder = 5, Name = "Exit Base", ZIndex = 21}, BypassContent)
+local ExitBaseBtn = new("TextButton", {Size = UDim2.new(1, -10, 0, 33), BackgroundColor3 = Theme.ExitBase, BorderSizePixel = 0, Text = "Exit Base", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 11, Font = Enum.Font.GothamBold, LayoutOrder = 5, Name = "Exit Base"}, BypassContent)
 new("UICorner", {CornerRadius = UDim.new(0, 8)}, ExitBaseBtn)
 new("UIStroke", {Color = Theme.Stroke, Thickness = 1}, ExitBaseBtn)
 AddHover(ExitBaseBtn, Theme.ExitBase, Color3.fromRGB(240, 100, 100))
