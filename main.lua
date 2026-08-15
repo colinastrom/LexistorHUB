@@ -239,10 +239,12 @@ local function addTab(name)
         Visible=false, Parent=pagesBox})
     local sf = new("ScrollingFrame", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
         BorderSizePixel=0, ScrollBarThickness=0, Parent=pg})
-    new("UIListLayout", {Padding=UDim.new(0,10), Parent=sf})
+    
+    -- Сохраняем layout в переменную при создании!
+    local layout = new("UIListLayout", {Padding=UDim.new(0,10), Parent=sf})
     new("UIPadding", {PaddingRight=UDim.new(0,2), Parent=sf})
 
-    local layout = sf:FindFirstChildOfClass("UIListLayout")
+    -- Используем сохранённую переменную
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         sf.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+20)
     end)
@@ -1255,13 +1257,19 @@ for _, preset in ipairs(ColorPresets) do
     local sw = new("TextButton", {Size=UDim2.new(0,28,0,28), BackgroundColor3=preset.c,
         Text="", Parent=colorRow})
     corner(sw, 6)
+    
+    -- Сохраняем stroke в переменную при создании!
     local stroke = new("UIStroke", {Parent=sw, Thickness=0, Color=C.TEXT})
+    
     if C.ACC1 == preset.c then
         stroke.Thickness = 2
         selectedSwatch = sw
+        sw.StrokeRef = stroke -- сохраняем ссылку на обводку
     end
+    sw.StrokeRef = stroke
+    
     sw.Activated:Connect(function()
-        if selectedSwatch then selectedSwatch:FindFirstChildOfClass("UIStroke").Thickness = 0 end
+        if selectedSwatch then selectedSwatch.StrokeRef.Thickness = 0 end
         stroke.Thickness = 2
         selectedSwatch = sw
         setAccent(preset.c)
