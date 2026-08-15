@@ -328,7 +328,10 @@ end
 --------------------------------------------------
 -- SETTINGS & STATE (единый источник: Config["<Имя тоггла>"])
 --------------------------------------------------
-local FAST_SPEED = 38
+local autoRunSpeed = Config.AutoRunSpeed or 38
+local wallHopPower = Config.WallHopPower or 80
+local wallHopDuration = Config.WallHopDuration or 0.3
+
 local UP_DISTANCE = 20
 local DOWN_DISTANCE = 17
 
@@ -376,7 +379,7 @@ local function startAutoRun()
     if autoRunConnection then return end
     autoRunConnection = TrackConnection(RunService.Heartbeat:Connect(function()
         if humanoid and humanoid.Health > 0 then
-            humanoid.WalkSpeed = FAST_SPEED
+            humanoid.WalkSpeed = autoRunSpeed
             local camera = workspace.CurrentCamera
             if camera then
                 local lookVector = camera.CFrame.LookVector
@@ -774,19 +777,17 @@ local function stopAutoLock()
 end
 
 --------------------------------------------------
--- WALL HOP (по времени, не по кадрам)
+-- WALL HOP (Плавный и быстрый через BodyVelocity)
 --------------------------------------------------
-local wallHopWasClimbing = false
-local wallHopClearTime = 0
-local wallHopNextTime = 0
+local wallHopActive = false
 
 TrackConnection(RunService.Heartbeat:Connect(function()
     if not wallHopEnabled or not rootPart or not humanoid or humanoid.Health <= 0 then
-        wallHopWasClimbing = false
+        wallHopActive = false
         return
     end
 
-    local now = os.clock()
+    if wallHopActive then return end
 
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
@@ -796,23 +797,31 @@ TrackConnection(RunService.Heartbeat:Connect(function()
     local result = workspace:Raycast(rootPart.Position, forwardDirection * 3, rayParams)
 
     if result then
-        wallHopWasClimbing = true
-        wallHopClearTime = now
-        if now >= wallHopNextTime then
-            -- случайный интервал 0.08–0.2 сек между "прыжками", как у человека
-            wallHopNextTime = now + 0.08 + math.random() * 0.12
-            local currentVel = rootPart.AssemblyLinearVelocity
-            local upVel = 22 + math.random() * 8 -- случайная с��ла 22–30
-            rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
-        end
-    elseif wallHopWasClimbing then
-        if now - wallHopClearTime < 0.12 then
-            -- не залипаем вверх, а лишь слегка дожимаем вперёд
-            local currentVel = rootPart.AssemblyLinearVelocity
-            rootPart.AssemblyLinearVelocity = Vector3.new(forwardDirection.X * 22, math.max(currentVel.Y, 24), forwardDirection.Z * 22)
-        else
-            wallHopWasClimbing = false
-        end
+        wallHopActive = true
+        task.spawn(function()
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(1, 1, 1) * math.huge
+            -- Сила: вверх + немного вперёд (40% от силы вверх)
+            bv.Velocity = Vector3.new(forwardDirection.X * (wallHopPower * 0.4), wallHopPower, forwardDirection.Z * (wallHopPower * 0.4))
+            bv.Parent = rootPart
+
+            local startTime = os.clock()
+            while os.clock() - startTime < wallHopDuration do
+                if not rootPart or not humanoid or humanoid.Health <= 0 or not wallHopEnabled then
+                    break
+                end
+                -- Обновляем направление, если игрок крутит камерой
+                local cam = workspace.CurrentCamera
+                if cam then
+                    local look = cam.CFrame.LookVector
+                    bv.Velocity = Vector3.new(look.X * (wallHopPower * 0.4), wallHopPower, look.Z * (wallHopPower * 0.4))
+                end
+                task.wait()
+            end
+
+            if bv then bv:Destroy() end
+            wallHopActive = false
+        end)
     end
 end))
 
@@ -865,7 +874,6 @@ local function smoothVerticalMove(distance, direction)
         local char = LocalPlayer.Character
         if not char or not rootPart then baseDebounce = false return end
 
-        -- отключаем коллизии у ВСЕХ частей тела
         local collideStates = {}
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -874,7 +882,6 @@ local function smoothVerticalMove(distance, direction)
             end
         end
 
-        -- анкорим, чтобы гравитация/физика не боролись со сдвигом
         local wasAnchored = rootPart.Anchored
         rootPart.Anchored = true
 
@@ -895,7 +902,6 @@ local function smoothVerticalMove(distance, direction)
             rootPart.AssemblyLinearVelocity = Vector3.zero
         end
 
-        -- возвращаем коллизии как были
         for part, state in pairs(collideStates) do
             if part and part.Parent then part.CanCollide = state end
         end
@@ -904,6 +910,7 @@ local function smoothVerticalMove(distance, direction)
         baseDebounce = false
     end)
 end
+
 --------------------------------------------------
 -- SAVED JOB IDS & SERVER HOP
 --------------------------------------------------
@@ -982,7 +989,6 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = CoreGui
 
--- Floating Toggle Button
 local ToggleBtnFloat = Instance.new("TextButton")
 ToggleBtnFloat.Size = UDim2.new(0, 0, 0, 0)
 ToggleBtnFloat.Position = UDim2.new(0, 20, 0.5, -20)
@@ -1006,7 +1012,6 @@ FloatStroke.Parent = ToggleBtnFloat
 
 table.insert(AccentTracker.Static, ToggleBtnFloat)
 
--- Main Window
 local Main = Instance.new("Frame")
 Main.Size = UDim2.new(0, 440, 0, 0)
 Main.Position = UDim2.new(0.5, -220, 0.5, -155)
@@ -1028,7 +1033,6 @@ MainStroke.Color = Theme.Stroke
 MainStroke.Thickness = 1.5
 MainStroke.Parent = Main
 
--- Sidebar
 local Sidebar = Instance.new("Frame")
 Sidebar.Size = UDim2.new(0, 130, 1, 0)
 Sidebar.BackgroundColor3 = Theme.Sidebar
@@ -1039,7 +1043,6 @@ local SidebarCorner = Instance.new("UICorner")
 SidebarCorner.CornerRadius = UDim.new(0, 10)
 SidebarCorner.Parent = Sidebar
 
--- Header
 local Header = Instance.new("Frame")
 Header.Size = UDim2.new(1, -130, 0, 50)
 Header.Position = UDim2.new(0, 130, 0, 0)
@@ -1124,7 +1127,6 @@ ToggleBtnFloat.MouseButton1Click:Connect(function()
     TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.new(0, 440, 0, 310)}):Play()
 end)
 
--- Sidebar Layout
 local SidebarLayout = Instance.new("UIListLayout")
 SidebarLayout.FillDirection = Enum.FillDirection.Vertical
 SidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -1132,16 +1134,13 @@ SidebarLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 SidebarLayout.Padding = UDim.new(0, 5)
 SidebarLayout.Parent = Sidebar
 
--- Tab System
 local Pages = {}
 local TabButtons = {}
-local CurrentActivePage = nil
 
 local function switchTab(tabName)
     for name, page in pairs(Pages) do
         if name == tabName then
             page.Visible = true
-            CurrentActivePage = page
         else
             page.Visible = false
         end
@@ -1216,7 +1215,6 @@ local function CreateTab(text, icon)
     return Page
 end
 
--- One separator after all tabs
 local TabSeparator = Instance.new("Frame")
 TabSeparator.Size = UDim2.new(0.8, 0, 0, 1)
 TabSeparator.BackgroundTransparency = 0.5
@@ -1224,7 +1222,6 @@ TabSeparator.BackgroundColor3 = Theme.Stroke
 TabSeparator.BorderSizePixel = 0
 TabSeparator.Parent = Sidebar
 
--- Hover Function
 local function AddHover(btn)
     btn.MouseEnter:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.CardHover}):Play()
@@ -1436,6 +1433,108 @@ local function CreateButton(parent, text, callback, layoutOrder, defaultKeybind)
     return btn
 end
 
+local function CreateSlider(parent, title, min, max, default, callback, layoutOrder, pos)
+    local Container = Instance.new("Frame")
+    Container.Size = UDim2.new(1, -10, 0, 45)
+    if pos then Container.Position = pos else Container.LayoutOrder = layoutOrder or 0 end
+    Container.BackgroundColor3 = Theme.Card
+    Container.BorderSizePixel = 0
+    Container.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Container
+
+    local TitleLbl = Instance.new("TextLabel")
+    TitleLbl.Size = UDim2.new(0.6, 0, 0, 20)
+    TitleLbl.Position = UDim2.new(0, 10, 0, 5)
+    TitleLbl.BackgroundTransparency = 1
+    TitleLbl.Text = title
+    TitleLbl.TextColor3 = Theme.Text
+    TitleLbl.TextSize = 11
+    TitleLbl.Font = Enum.Font.GothamBold
+    TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLbl.Parent = Container
+
+    local ValLbl = Instance.new("TextLabel")
+    ValLbl.Size = UDim2.new(0.4, -10, 0, 20)
+    ValLbl.Position = UDim2.new(0.6, 0, 0, 5)
+    ValLbl.BackgroundTransparency = 1
+    ValLbl.Text = tostring(default)
+    ValLbl.TextColor3 = Theme.Accent
+    ValLbl.TextSize = 11
+    ValLbl.Font = Enum.Font.GothamBold
+    ValLbl.TextXAlignment = Enum.TextXAlignment.Right
+    ValLbl.Parent = Container
+
+    local Track = Instance.new("Frame")
+    Track.Size = UDim2.new(1, -20, 0, 6)
+    Track.Position = UDim2.new(0, 10, 0, 32)
+    Track.BackgroundColor3 = Theme.Background
+    Track.BorderSizePixel = 0
+    Track.Parent = Container
+
+    local TrackCorner = Instance.new("UICorner")
+    TrackCorner.CornerRadius = UDim.new(1, 0)
+    TrackCorner.Parent = Track
+
+    local Fill = Instance.new("Frame")
+    Fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    Fill.BackgroundColor3 = Theme.Accent
+    Fill.BorderSizePixel = 0
+    Fill.Parent = Track
+
+    local FillCorner = Instance.new("UICorner")
+    FillCorner.CornerRadius = UDim.new(1, 0)
+    FillCorner.Parent = Fill
+
+    local Knob = Instance.new("Frame")
+    Knob.Size = UDim2.new(0, 14, 0, 14)
+    Knob.Position = UDim2.new(Fill.Size.X.Scale, -7, 0.5, -7)
+    Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Knob.BorderSizePixel = 0
+    Knob.Parent = Track
+
+    local KnobCorner = Instance.new("UICorner")
+    KnobCorner.CornerRadius = UDim.new(1, 0)
+    KnobCorner.Parent = Knob
+
+    local dragging = false
+
+    local function update(input)
+        local rel = math.clamp((input.Position.X - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * rel)
+        Fill.Size = UDim2.new(rel, 0, 1, 0)
+        Knob.Position = UDim2.new(rel, -7, 0.5, -7)
+        ValLbl.Text = tostring(val)
+        if callback then callback(val) end
+    end
+
+    Knob.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
+    end)
+    Track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            update(input)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    TrackConnection(UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            update(input)
+        end
+    end))
+
+    return Container
+end
+
 local function CreatePopupMenu(title, width, height)
     local menu = Instance.new("Frame")
     menu.Size = UDim2.new(0, width, 0, height)
@@ -1501,11 +1600,17 @@ CreateToggle(MainPage, "Auto Run", function(state)
     notify("Auto Run", state and "Enabled" or "Disabled", "info")
 end, 1)
 
+CreateSlider(MainPage, "Auto Run Speed", 16, 120, autoRunSpeed, function(val)
+    autoRunSpeed = val
+    Config.AutoRunSpeed = val
+    SaveConfig()
+end, 2)
+
 CreateToggle(MainPage, "Player ESP", function(state)
     espEnabled = state
     updateESP()
     notify("Player ESP", state and "Enabled" or "Disabled", "info")
-end, 2, "T")
+end, 3, "T")
 
 CreateToggle(MainPage, "Pets ESP", function(state)
     petsEspEnabled = state
@@ -1513,27 +1618,27 @@ CreateToggle(MainPage, "Pets ESP", function(state)
         for pet, _ in pairs(espTracker) do removePetESP(pet) end
     end
     notify("Pets ESP", state and "Enabled" or "Disabled", "info")
-end, 3, "Y")
+end, 4, "Y")
 
 CreateToggle(MainPage, "Anti Fall", function(state)
     antiFallEnabled = state
     if antiFallEnabled then AntiFall = CreateAntiFall() else RemoveAntiFall() end
     notify("Anti Fall", state and "Enabled" or "Disabled", "info")
-end, 4)
+end, 5)
 
 CreateToggle(MainPage, "Anti AFK", function(state)
     antiAfkEnabled = state
     if antiAfkEnabled then startAntiAfk() else stopAntiAfk() end
     notify("Anti AFK", state and "Enabled" or "Disabled", "info")
-end, 5)
+end, 6)
 
 CreateButton(MainPage, "Pet Filter", function()
     PetFilterMenu.Visible = not PetFilterMenu.Visible
-end, 6)
+end, 7)
 
 CreateButton(MainPage, "Bypass Menu", function()
     BypassMenu.Visible = not BypassMenu.Visible
-end, 7, "B")
+end, 8, "B")
 
 -- COMBAT PAGE
 CreateToggle(CombatPage, "Anti Knockback", function(state)
@@ -1551,7 +1656,6 @@ end, 2)
 --------------------------------------------------
 -- SETTINGS PAGE
 --------------------------------------------------
--- Save Config Toggle
 local SaveConfigContainer = Instance.new("Frame")
 SaveConfigContainer.Size = UDim2.new(1, -10, 0, 38)
 SaveConfigContainer.BackgroundColor3 = Theme.Card
@@ -1622,7 +1726,6 @@ SaveConfigToggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Accent Color Section
 local ColorLabel = Instance.new("TextLabel")
 ColorLabel.Size = UDim2.new(1, -10, 0, 20)
 ColorLabel.BackgroundTransparency = 1
@@ -1693,7 +1796,6 @@ for _, preset in ipairs(ColorPresets) do
     end)
 end
 
--- Info text
 local InfoLabel = Instance.new("TextLabel")
 InfoLabel.Size = UDim2.new(1, -10, 0, 40)
 InfoLabel.BackgroundTransparency = 1
@@ -1709,27 +1811,35 @@ InfoLabel.Parent = SettingsPage
 --------------------------------------------------
 -- BYPASS MENU
 --------------------------------------------------
-BypassMenu = CreatePopupMenu("BYPASS", 200, 200)
+BypassMenu = CreatePopupMenu("BYPASS", 260, 280)
 
--- Wall Hop Toggle (общий CreateToggle вместо ручной отрисовки)
 local WallHopContainer = CreateToggle(BypassMenu, "Wall Hop", function(state)
     wallHopEnabled = state
     notify("Wall Hop", state and "Enabled" or "Disabled", "info")
-end, 1)
-WallHopContainer.Size = UDim2.new(0, 180, 0, 35)
-WallHopContainer.Position = UDim2.new(0, 10, 0, 35)
+end, nil, UDim2.new(0, 10, 0, 35))
+WallHopContainer.Size = UDim2.new(0, 240, 0, 35)
 WallHopContainer.BackgroundColor3 = Theme.Background
 WallHopContainer.ZIndex = 21
 for _, d in ipairs(WallHopContainer:GetDescendants()) do
     if d:IsA("GuiObject") then d.ZIndex = 22 end
 end
-local WallHopLabel = WallHopContainer:FindFirstChildOfClass("TextLabel")
-if WallHopLabel then WallHopLabel.Size = UDim2.new(1, -50, 1, 0) end
+
+CreateSlider(BypassMenu, "Wall Hop Power", 50, 200, wallHopPower, function(val)
+    wallHopPower = val
+    Config.WallHopPower = val
+    SaveConfig()
+end, nil, UDim2.new(0, 10, 0, 75))
+
+CreateSlider(BypassMenu, "Wall Hop Duration", 0.1, 1.0, wallHopDuration, function(val)
+    wallHopDuration = val
+    Config.WallHopDuration = val
+    SaveConfig()
+end, nil, UDim2.new(0, 10, 0, 130))
 
 -- Enter Base button
 local EnterBaseBtn = Instance.new("TextButton")
-EnterBaseBtn.Size = UDim2.new(0, 180, 0, 30)
-EnterBaseBtn.Position = UDim2.new(0, 10, 0, 80)
+EnterBaseBtn.Size = UDim2.new(0, 240, 0, 30)
+EnterBaseBtn.Position = UDim2.new(0, 10, 0, 190)
 EnterBaseBtn.BackgroundColor3 = Theme.Background
 EnterBaseBtn.BorderSizePixel = 0
 EnterBaseBtn.Text = "Enter Base"
@@ -1753,8 +1863,8 @@ end)
 
 -- Exit Base button
 local ExitBaseBtn = Instance.new("TextButton")
-ExitBaseBtn.Size = UDim2.new(0, 180, 0, 30)
-ExitBaseBtn.Position = UDim2.new(0, 10, 0, 120)
+ExitBaseBtn.Size = UDim2.new(0, 240, 0, 30)
+ExitBaseBtn.Position = UDim2.new(0, 10, 0, 230)
 ExitBaseBtn.BackgroundColor3 = Theme.Background
 ExitBaseBtn.BorderSizePixel = 0
 ExitBaseBtn.Text = "Exit Base"
@@ -1776,7 +1886,6 @@ ExitBaseBtn.MouseButton1Click:Connect(function()
     notify("Exit Base", "Moving up", "info")
 end)
 
--- Keybinds for Bypass
 CreateKeybindButton(EnterBaseBtn, "Enter Base", "Q", function()
     playClick()
     smoothVerticalMove(DOWN_DISTANCE, -1)
@@ -1862,7 +1971,6 @@ mpsBoxStroke.Color = Theme.Stroke
 mpsBoxStroke.Thickness = 1
 mpsBoxStroke.Parent = mpsBox
 
--- APPLY button
 local applyBtn = Instance.new("TextButton")
 applyBtn.Size = UDim2.new(0, 95, 0, 28)
 applyBtn.Position = UDim2.new(0.05, 5, 0, 105)
@@ -1896,7 +2004,6 @@ applyBtn.MouseButton1Click:Connect(function()
     notify("Pet Filter", "Applied successfully", "success")
 end)
 
--- CLEAR button
 local clearBtn = Instance.new("TextButton")
 clearBtn.Size = UDim2.new(0, 95, 0, 28)
 clearBtn.Position = UDim2.new(0.55, 0, 0, 105)
@@ -1996,7 +2103,6 @@ CreateButton(ServerPage, "Join Empty Server", function()
     ServerSearching = false
 end, 4)
 
--- Separator
 local serverSep = Instance.new("Frame")
 serverSep.Size = UDim2.new(1, -10, 0, 1)
 serverSep.BackgroundColor3 = Theme.Stroke
@@ -2006,7 +2112,6 @@ serverSep.LayoutOrder = 5
 serverSep.Name = "Sep"
 serverSep.Parent = ServerPage
 
--- Server list container
 local ServerListContainer = Instance.new("Frame")
 ServerListContainer.Size = UDim2.new(1, 0, 0, 0)
 ServerListContainer.BackgroundTransparency = 1
@@ -2101,7 +2206,6 @@ UpdateServerList = function()
     end
 end
 
--- Auto-update canvas size
 TrackTask(task.spawn(function()
     while true do
         task.wait(0.5)
