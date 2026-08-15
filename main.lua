@@ -176,6 +176,25 @@ local winStroke = new("UIStroke", {Parent=main, Thickness=1.4, Transparency=.45}
 grad(winStroke, C.ACC1, C.ACC2, 90)
 local scale = new("UIScale", {Scale=.92, Parent=main})
 
+-- АВТО-МАСШТАБ ПОД ЭКРАН ТЕЛЕФОНА
+local function updateScale()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local s = math.min(cam.ViewportSize.X / 480, cam.ViewportSize.Y / 690)
+    s = math.clamp(s, 0.5, 1.2)
+    tw(scale, .2, {Scale = s})
+end
+updateScale()
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+    end
+    updateScale()
+end)
+if workspace.CurrentCamera then
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+end
+
 local header = new("TextButton", {Text="", BackgroundColor3=C.BG, BorderSizePixel=0,
     Size=UDim2.new(1,0,0,64), Parent=main, AutoButtonColor=false})
 local logo = new("TextLabel", {Text="SS", TextSize=26, Font=Enum.Font.GothamBlack,
