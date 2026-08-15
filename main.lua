@@ -802,7 +802,7 @@ TrackConnection(RunService.Heartbeat:Connect(function()
             -- случайный интервал 0.08–0.2 сек между "прыжками", как у человека
             wallHopNextTime = now + 0.08 + math.random() * 0.12
             local currentVel = rootPart.AssemblyLinearVelocity
-            local upVel = 22 + math.random() * 8 -- случайная сила 22–30
+            local upVel = 22 + math.random() * 8 -- случайная с��ла 22–30
             rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, upVel, currentVel.Z)
         end
     elseif wallHopWasClimbing then
@@ -1711,87 +1711,20 @@ InfoLabel.Parent = SettingsPage
 --------------------------------------------------
 BypassMenu = CreatePopupMenu("BYPASS", 200, 200)
 
--- Wall Hop Toggle
-local WallHopContainer = Instance.new("Frame")
+-- Wall Hop Toggle (общий CreateToggle вместо ручной отрисовки)
+local WallHopContainer = CreateToggle(BypassMenu, "Wall Hop", function(state)
+    wallHopEnabled = state
+    notify("Wall Hop", state and "Enabled" or "Disabled", "info")
+end, 1)
 WallHopContainer.Size = UDim2.new(0, 180, 0, 35)
 WallHopContainer.Position = UDim2.new(0, 10, 0, 35)
 WallHopContainer.BackgroundColor3 = Theme.Background
-WallHopContainer.BorderSizePixel = 0
 WallHopContainer.ZIndex = 21
-WallHopContainer.Parent = BypassMenu
-
-local WallHopCorner = Instance.new("UICorner")
-WallHopCorner.CornerRadius = UDim.new(0, 6)
-WallHopCorner.Parent = WallHopContainer
-
-local WallHopLabel = Instance.new("TextLabel")
-WallHopLabel.Size = UDim2.new(1, -50, 1, 0)
-WallHopLabel.Position = UDim2.new(0, 10, 0, 0)
-WallHopLabel.BackgroundTransparency = 1
-WallHopLabel.Text = "Wall Hop"
-WallHopLabel.TextColor3 = Theme.Text
-WallHopLabel.TextSize = 11
-WallHopLabel.Font = Enum.Font.GothamBold
-WallHopLabel.TextXAlignment = Enum.TextXAlignment.Left
-WallHopLabel.ZIndex = 22
-WallHopLabel.Parent = WallHopContainer
-
-local WallHopToggleBtn = Instance.new("TextButton")
-WallHopToggleBtn.Size = UDim2.new(0, 38, 0, 19)
-WallHopToggleBtn.Position = UDim2.new(1, -44, 0.5, -10)
-WallHopToggleBtn.BackgroundColor3 = Theme.ToggleOff
-WallHopToggleBtn.BorderSizePixel = 0
-WallHopToggleBtn.Text = ""
-WallHopToggleBtn.ZIndex = 22
-WallHopToggleBtn.Parent = WallHopContainer
-
-local WallHopToggleCorner = Instance.new("UICorner")
-WallHopToggleCorner.CornerRadius = UDim.new(1, 0)
-WallHopToggleCorner.Parent = WallHopToggleBtn
-
-local WallHopCircle = Instance.new("Frame")
-WallHopCircle.Size = UDim2.new(0, 15, 0, 15)
-WallHopCircle.Position = UDim2.new(0, 2, 0.5, -8)
-WallHopCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-WallHopCircle.BorderSizePixel = 0
-WallHopCircle.ZIndex = 23
-WallHopCircle.Parent = WallHopToggleBtn
-
-local WallHopCircleCorner = Instance.new("UICorner")
-WallHopCircleCorner.CornerRadius = UDim.new(1, 0)
-WallHopCircleCorner.Parent = WallHopCircle
-
-local wallHopState = false
-local wallHopToggleData = {btn = WallHopToggleBtn, isOn = false}
-table.insert(AccentTracker.Toggles, wallHopToggleData)
-
-WallHopToggleBtn.MouseButton1Click:Connect(function()
-    playClick()
-    wallHopState = not wallHopState
-    wallHopEnabled = wallHopState
-    wallHopToggleData.isOn = wallHopState
-    Config["Wall Hop"] = wallHopState
-    SaveConfig()
-    if wallHopState then
-        TweenService:Create(WallHopToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOn}):Play()
-        TweenService:Create(WallHopCircle, TweenInfo.new(0.2), {Position = UDim2.new(1, -17, 0.5, -8)}):Play()
-    else
-        TweenService:Create(WallHopToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOff}):Play()
-        TweenService:Create(WallHopCircle, TweenInfo.new(0.2), {Position = UDim2.new(0, 2, 0.5, -8)}):Play()
-    end
-    notify("Wall Hop", wallHopState and "Enabled" or "Disabled", "info")
-end)
-
-if Config["Wall Hop"] == true then
-    task.spawn(function()
-        task.wait(0.2)
-        wallHopState = true
-        wallHopEnabled = true
-        wallHopToggleData.isOn = true
-        TweenService:Create(WallHopToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.ToggleOn}):Play()
-        TweenService:Create(WallHopCircle, TweenInfo.new(0.2), {Position = UDim2.new(1, -17, 0.5, -8)}):Play()
-    end)
+for _, d in ipairs(WallHopContainer:GetDescendants()) do
+    if d:IsA("GuiObject") then d.ZIndex = 22 end
 end
+local WallHopLabel = WallHopContainer:FindFirstChildOfClass("TextLabel")
+if WallHopLabel then WallHopLabel.Size = UDim2.new(1, -50, 1, 0) end
 
 -- Enter Base button
 local EnterBaseBtn = Instance.new("TextButton")
