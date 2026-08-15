@@ -255,14 +255,19 @@ local function addTab(name)
         Visible=false, GroupTransparency=1, Parent=pagesBox})
     local sf = new("ScrollingFrame", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
         BorderSizePixel=0, ScrollBarThickness=0,
-        AutomaticCanvasSize=Enum.AutomaticCanvasSize.Y, Parent=pg})
+        Parent=pg}) -- Убрали AutomaticCanvasSize
     new("UIListLayout", {Padding=UDim.new(0,10), Parent=sf})
     new("UIPadding", {PaddingRight=UDim.new(0,2), Parent=sf})
 
+    -- auto canvas via event
     local layout = sf:FindFirstChildOfClass("UIListLayout")
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         sf.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+20)
     end)
+
+    table.insert(tabs, btn); table.insert(pages, pg)
+    return sf, btn
+end
 
     table.insert(tabs, btn); table.insert(pages, pg)
     return sf, btn
