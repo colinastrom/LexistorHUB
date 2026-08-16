@@ -107,11 +107,20 @@ end
 --// HELPERS
 local function new(className, props, parent)
     local inst = Instance.new(className)
+
     if props then
         for k, v in pairs(props) do
             inst[k] = v
         end
     end
+
+    -- Фикс ZIndex для popup-меню
+    if inst:IsA("GuiObject") and parent and parent:IsA("GuiObject") then
+        if parent.ZIndex > 1 and inst.ZIndex == 1 then
+            inst.ZIndex = parent.ZIndex + 1
+        end
+    end
+
     inst.Parent = parent
     return inst
 end
