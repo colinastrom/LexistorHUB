@@ -205,7 +205,7 @@ local function playClick()
 end
 
 --// STATE
-local FAST_SPEED = 38
+local autoRunSpeed = Config.autoRunSpeed or 38
 local UP_DISTANCE = 20
 local DOWN_DISTANCE = 17
 
@@ -239,6 +239,7 @@ local function setupCharacter(character)
 
     if humanoid then
         normalSpeed = humanoid.WalkSpeed
+
         characterStateChangedConn = humanoid.StateChanged:Connect(function(_, newState)
             if newState == Enum.HumanoidStateType.Jumping then
                 lastJumpTime = os.clock()
@@ -257,8 +258,8 @@ LocalPlayer.CharacterAdded:Connect(setupCharacter)
 RunService.Heartbeat:Connect(function()
     if humanoid and humanoid.Health > 0 then
         if State.autoRun then
-            if humanoid.WalkSpeed ~= FAST_SPEED then
-                humanoid.WalkSpeed = FAST_SPEED
+            if humanoid.WalkSpeed ~= autoRunSpeed then
+                humanoid.WalkSpeed = autoRunSpeed
             end
 
             local camera = Workspace.CurrentCamera
@@ -273,6 +274,151 @@ RunService.Heartbeat:Connect(function()
         end
     end
 end)
+
+--// NOTIFICATION SYSTEM
+local NotifyGui = new("ScreenGui", {
+    Name = "SSSNotify",
+    ResetOnSpawn = false,
+    DisplayOrder = 999999
+}, GuiParent)
+
+local NotifyHolder = new("Frame", {
+    Size = UDim2.new(0, 300, 0, 0),
+    Position = UDim2.new(1, -320, 0, 20),
+    BackgroundTransparency = 1,
+    Active = false,
+    AutomaticSize = Enum.AutomaticSize.Y
+}, NotifyGui)
+
+new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Vertical,
+    HorizontalAlignment = Enum.HorizontalAlignment.Right,
+    VerticalAlignment = Enum.VerticalAlignment.Top,
+    Padding = UDim.new(0, 10)
+}, NotifyHolder)
+
+local function notify(title, text, notifType)
+    notifType = notifType or "success"
+
+    local iconColor = Theme.Success
+    local iconText = "🛡"
+
+    if notifType == "warning" then
+        iconColor = Theme.Warning
+        iconText = "⚠"
+    elseif notifType == "error" then
+        iconColor = Theme.Error
+        iconText = "✕"
+    elseif notifType == "info" then
+        iconColor = Theme.Info
+        iconText = "ℹ"
+    end
+
+    local notif = new("Frame", {
+        Size = UDim2.new(0, 280, 0, 70),
+        Position = UDim2.new(0, 300, 0, 0),
+        BackgroundColor3 = Theme.Card,
+        BorderSizePixel = 0,
+        Active = false
+    }, NotifyHolder)
+
+    corner(notif, 8)
+    local stroke = addStroke(notif, Theme.Stroke, 1.5)
+
+    local iconCircle = new("Frame", {
+        Size = UDim2.new(0, 40, 0, 40),
+        Position = UDim2.new(0, 12, 0.5, -20),
+        BackgroundColor3 = iconColor,
+        BorderSizePixel = 0,
+        Active = false
+    }, notif)
+
+    corner(iconCircle, 20)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = iconText,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Active = false
+    }, iconCircle)
+
+    local titleLbl = new("TextLabel", {
+        Size = UDim2.new(1, -70, 0, 20),
+        Position = UDim2.new(0, 62, 0, 15),
+        BackgroundTransparency = 1,
+        Text = title,
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false
+    }, notif)
+
+    local textLbl = new("TextLabel", {
+        Size = UDim2.new(1, -70, 0, 16),
+        Position = UDim2.new(0, 62, 0, 38),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.TextDark,
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false
+    }, notif)
+
+    local progress = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 3),
+        Position = UDim2.new(0, 0, 1, -3),
+        BackgroundColor3 = iconColor,
+        BorderSizePixel = 0,
+        Active = false
+    }, notif)
+
+    corner(progress, 2)
+
+    notif.BackgroundTransparency = 1
+    iconCircle.BackgroundTransparency = 1
+    progress.BackgroundTransparency = 1
+    stroke.Transparency = 1
+    titleLbl.TextTransparency = 1
+    textLbl.TextTransparency = 1
+
+    tween(notif, 0.4, {
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 0
+    }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+    tween(stroke, 0.4, {Transparency = 0})
+    tween(iconCircle, 0.4, {BackgroundTransparency = 0})
+    tween(progress, 0.4, {BackgroundTransparency = 0})
+    tween(titleLbl, 0.4, {TextTransparency = 0})
+    tween(textLbl, 0.4, {TextTransparency = 0})
+
+    task.delay(0.4, function()
+        tween(progress, 2.6, {
+            Size = UDim2.new(0, 0, 0, 3)
+        }, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    end)
+
+    task.delay(3, function()
+        local tweenOut = tween(notif, 0.4, {
+            Position = UDim2.new(0, 300, 0, 0),
+            BackgroundTransparency = 1
+        }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+
+        tween(stroke, 0.4, {Transparency = 1})
+        tween(iconCircle, 0.4, {BackgroundTransparency = 1})
+        tween(progress, 0.4, {BackgroundTransparency = 1})
+        tween(titleLbl, 0.4, {TextTransparency = 1})
+        tween(textLbl, 0.4, {TextTransparency = 1})
+
+        tweenOut.Completed:Wait()
+        notif:Destroy()
+    end)
+end
 
 --// PLAYER ESP
 local ESPs = {}
@@ -472,7 +618,14 @@ local function passesFilter(pet)
 end
 
 local function createPetESP(pet)
-    local adornPart = pet:FindFirstChildWhichIsA("BasePart", true)
+    local adornPart = nil
+
+    if pet:IsA("BasePart") then
+        adornPart = pet
+    else
+        adornPart = pet:FindFirstChildWhichIsA("BasePart", true)
+    end
+
     if not adornPart then return nil end
 
     local billboard = new("BillboardGui", {
@@ -547,6 +700,7 @@ local function createPetESP(pet)
         highlight.Enabled = State.petsEspEnabled
 
         local mutation = getPetMutation(pet)
+
         if mutation then
             mutLabel.Text = mutation
             mutLabel.Visible = true
@@ -828,20 +982,18 @@ end)
 
 --// ANTI FALL
 local AntiFall = nil
-local antiFallActive = false
-local antiFallY = 0
 
-local function removeAntiFall()
+local function RemoveAntiFall()
     if AntiFall then
         AntiFall:Destroy()
         AntiFall = nil
     end
 end
 
-local function createAntiFall()
-    if not rootPart then return end
+local function CreateAntiFall()
+    RemoveAntiFall()
 
-    removeAntiFall()
+    if not rootPart then return end
 
     AntiFall = new("Part", {
         Name = "AntiFall_Circle_800x800",
@@ -854,37 +1006,17 @@ local function createAntiFall()
         Transparency = 0.45
     }, Workspace)
 
-    antiFallY = rootPart.Position.Y - 7
-
-    AntiFall.CFrame = CFrame.new(rootPart.Position.X, antiFallY, rootPart.Position.Z)
-        * CFrame.Angles(0, 0, math.rad(90))
+    AntiFall.CFrame = CFrame.new(
+        rootPart.Position.X,
+        rootPart.Position.Y - 7,
+        rootPart.Position.Z
+    ) * CFrame.Angles(0, 0, math.rad(90))
 end
-
-RunService.Heartbeat:Connect(function()
-    if State.antiFallEnabled and AntiFall and rootPart and humanoid and humanoid.Health > 0 then
-        local velY = rootPart.AssemblyLinearVelocity.Y
-
-        if velY < -55 then
-            if not antiFallActive then
-                antiFallActive = true
-                antiFallY = rootPart.Position.Y - 7
-            end
-
-            AntiFall.CFrame = CFrame.new(rootPart.Position.X, antiFallY, rootPart.Position.Z)
-                * CFrame.Angles(0, 0, math.rad(90))
-        else
-            antiFallActive = false
-
-            AntiFall.CFrame = CFrame.new(rootPart.Position.X, rootPart.Position.Y - 7, rootPart.Position.Z)
-                * CFrame.Angles(0, 0, math.rad(90))
-        end
-    end
-end)
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.5)
     if State.antiFallEnabled then
-        createAntiFall()
+        CreateAntiFall()
     end
 end)
 
@@ -1001,7 +1133,7 @@ local function GetServers()
     return AllServers
 end
 
-local function FindServer(Mode, token)
+local function FindServer(mode, token)
     local BestServer = nil
 
     for _ = 1, 5 do
@@ -1013,11 +1145,11 @@ local function FindServer(Mode, token)
 
         for _, Server in ipairs(Servers) do
             if Server.id ~= game.JobId and Server.playing < Server.maxPlayers then
-                if Mode == "BUSY" then
+                if mode == "BUSY" then
                     if not BestServer or Server.playing > BestServer.playing then
                         BestServer = Server
                     end
-                elseif Mode == "EMPTY" then
+                elseif mode == "EMPTY" then
                     if not BestServer or Server.playing < BestServer.playing then
                         BestServer = Server
                     end
@@ -1035,164 +1167,56 @@ local function FindServer(Mode, token)
     return nil
 end
 
---// NOTIFICATION SYSTEM
-local NotifyGui = new("ScreenGui", {
-    Name = "SSSNotify",
-    ResetOnSpawn = false,
-    DisplayOrder = 999999
-}, GuiParent)
-
-local NotifyHolder = new("Frame", {
-    Size = UDim2.new(0, 300, 0, 0),
-    Position = UDim2.new(1, -320, 0, 20),
-    BackgroundTransparency = 1,
-    Active = false,
-    AutomaticSize = Enum.AutomaticSize.Y
-}, NotifyGui)
-
-new("UIListLayout", {
-    FillDirection = Enum.FillDirection.Vertical,
-    HorizontalAlignment = Enum.HorizontalAlignment.Right,
-    VerticalAlignment = Enum.VerticalAlignment.Top,
-    Padding = UDim.new(0, 10)
-}, NotifyHolder)
-
-local function notify(title, text, notifType)
-    notifType = notifType or "success"
-
-    local iconColor = Theme.Success
-    local iconText = "🛡"
-
-    if notifType == "warning" then
-        iconColor = Theme.Warning
-        iconText = "⚠"
-    elseif notifType == "error" then
-        iconColor = Theme.Error
-        iconText = "✕"
-    elseif notifType == "info" then
-        iconColor = Theme.Info
-        iconText = "ℹ"
+--// DRAG SYSTEM
+local function MakeDraggable(frame, handles)
+    if handles == nil then
+        handles = {frame}
     end
 
-    local notif = new("Frame", {
-        Size = UDim2.new(0, 280, 0, 70),
-        Position = UDim2.new(0, 300, 0, 0),
-        BackgroundColor3 = Theme.Card,
-        BorderSizePixel = 0,
-        Active = false
-    }, NotifyHolder)
+    local dragging = false
+    local dragInput = nil
+    local mousePos = nil
+    local framePos = nil
 
-    corner(notif, 8)
-    addStroke(notif, Theme.Stroke, 1.5)
+    local function beginDrag(input)
+        dragging = true
+        mousePos = input.Position
+        framePos = frame.Position
 
-    local iconCircle = new("Frame", {
-        Size = UDim2.new(0, 40, 0, 40),
-        Position = UDim2.new(0, 12, 0.5, -20),
-        BackgroundColor3 = iconColor,
-        BorderSizePixel = 0,
-        Active = false
-    }, notif)
-
-    corner(iconCircle, 20)
-
-    new("TextLabel", {
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Text = iconText,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 18,
-        Font = Enum.Font.GothamBold,
-        Active = false
-    }, iconCircle)
-
-    new("TextLabel", {
-        Size = UDim2.new(1, -70, 0, 20),
-        Position = UDim2.new(0, 62, 0, 15),
-        BackgroundTransparency = 1,
-        Text = title,
-        TextColor3 = Theme.Text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Active = false
-    }, notif)
-
-    new("TextLabel", {
-        Size = UDim2.new(1, -70, 0, 16),
-        Position = UDim2.new(0, 62, 0, 38),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Theme.TextDark,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Active = false
-    }, notif)
-
-    local progress = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 3),
-        Position = UDim2.new(0, 0, 1, -3),
-        BackgroundColor3 = iconColor,
-        BorderSizePixel = 0,
-        Active = false
-    }, notif)
-
-    corner(progress, 2)
-
-    notif.BackgroundTransparency = 1
-    iconCircle.BackgroundTransparency = 1
-    progress.BackgroundTransparency = 1
-
-    for _, child in ipairs(notif:GetDescendants()) do
-        if child:IsA("TextLabel") then
-            child.TextTransparency = 1
-        elseif child:IsA("UIStroke") then
-            child.Transparency = 1
-        end
-    end
-
-    tween(notif, 0.4, {
-        Position = UDim2.new(0, 0, 0, 0),
-        BackgroundTransparency = 0
-    }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-
-    tween(iconCircle, 0.4, {BackgroundTransparency = 0})
-    tween(progress, 0.4, {BackgroundTransparency = 0})
-
-    for _, child in ipairs(notif:GetDescendants()) do
-        if child:IsA("TextLabel") then
-            tween(child, 0.4, {TextTransparency = 0})
-        elseif child:IsA("UIStroke") then
-            tween(child, 0.4, {Transparency = 0})
-        end
-    end
-
-    task.delay(0.4, function()
-        tween(progress, 2.6, {
-            Size = UDim2.new(0, 0, 0, 3)
-        }, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-    end)
-
-    task.delay(3, function()
-        local tweenOut = tween(notif, 0.4, {
-            Position = UDim2.new(0, 300, 0, 0),
-            BackgroundTransparency = 1
-        }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-
-        tween(iconCircle, 0.4, {BackgroundTransparency = 1})
-        tween(progress, 0.4, {BackgroundTransparency = 1})
-
-        for _, child in ipairs(notif:GetDescendants()) do
-            if child:IsA("TextLabel") then
-                tween(child, 0.4, {TextTransparency = 1})
-            elseif child:IsA("UIStroke") then
-                tween(child, 0.4, {Transparency = 1})
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
             end
-        end
+        end)
+    end
 
-        tweenOut.Completed:Wait()
-        notif:Destroy()
-    end)
+    local function updateDrag(input)
+        if dragging and dragInput == input and mousePos and framePos then
+            local delta = input.Position - mousePos
+            frame.Position = UDim2.new(
+                framePos.X.Scale,
+                framePos.X.Offset + delta.X,
+                framePos.Y.Scale,
+                framePos.Y.Offset + delta.Y
+            )
+        end
+    end
+
+    for _, handle in ipairs(handles) do
+        handle.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                beginDrag(input)
+            end
+        end)
+
+        handle.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                dragInput = input
+            end
+        end)
+    end
+
+    UserInputService.InputChanged:Connect(updateDrag)
 end
 
 --// MAIN UI
@@ -1204,16 +1228,17 @@ local ScreenGui = new("ScreenGui", {
 
 local Main = new("Frame", {
     Size = UDim2.new(0, 440, 0, 0),
-    Position = UDim2.new(0.5, -220, 0.5, -155),
+    Position = UDim2.new(0.5, -220, 0.5, -170),
     BackgroundColor3 = Theme.Background,
     BorderSizePixel = 0,
-    Active = true
+    Active = true,
+    Visible = false
 }, ScreenGui)
 
 corner(Main, 10)
 addStroke(Main, Theme.Stroke, 1.5)
 
-local uiScale = new("UIScale", {
+local MainScale = new("UIScale", {
     Scale = 1
 }, Main)
 
@@ -1310,46 +1335,7 @@ addStroke(ToggleBtnFloat, Theme.Stroke, 1.5)
 
 table.insert(AccentTracker.Static, ToggleBtnFloat)
 
-local function MakeDraggable(frame)
-    local dragging = false
-    local dragInput = nil
-    local mousePos = nil
-    local framePos = nil
-
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            mousePos = input.Position
-            framePos = frame.Position
-
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging and mousePos and framePos then
-            local delta = input.Position - mousePos
-            frame.Position = UDim2.new(
-                framePos.X.Scale,
-                framePos.X.Offset + delta.X,
-                framePos.Y.Scale,
-                framePos.Y.Offset + delta.Y
-            )
-        end
-    end)
-end
-
-MakeDraggable(Header)
+MakeDraggable(Main, {Main, Header})
 
 local uiVisible = true
 
@@ -1361,7 +1347,7 @@ local function toggleUI(show)
         Main.Size = UDim2.new(0, 440, 0, 0)
 
         tween(Main, 0.3, {
-            Size = UDim2.new(0, 440, 0, 310)
+            Size = UDim2.new(0, 440, 0, 340)
         }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
         tween(ToggleBtnFloat, 0.2, {
@@ -1399,48 +1385,47 @@ ToggleBtnFloat.MouseButton1Click:Connect(function()
     toggleUI(true)
 end)
 
---// CAMERA SCALE
-local camConn = nil
+--// ADAPTIVE SCALE
+local cameraScaleConnection = nil
 
-local function updateScale()
+local function updateMainScale()
     local cam = Workspace.CurrentCamera
     if not cam then return end
 
     local viewport = cam.ViewportSize
-    local scale = math.clamp(math.min(viewport.X / 480, viewport.Y / 360), 0.65, 1.15)
+    local scaleX = viewport.X / 500
+    local scaleY = viewport.Y / 390
 
-    tween(uiScale, 0.15, {Scale = scale})
+    local newScale = math.clamp(math.min(scaleX, scaleY), 0.62, 1.15)
+
+    tween(MainScale, 0.15, {Scale = newScale})
 end
 
-local function hookCamera(cam)
-    if camConn then
-        camConn:Disconnect()
-        camConn = nil
+local function hookCameraScale(cam)
+    if cameraScaleConnection then
+        cameraScaleConnection:Disconnect()
+        cameraScaleConnection = nil
     end
 
     if cam then
-        camConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
-        updateScale()
+        cameraScaleConnection = cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateMainScale)
+        updateMainScale()
     end
 end
 
-hookCamera(Workspace.CurrentCamera)
+hookCameraScale(Workspace.CurrentCamera)
 
 Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    hookCamera(Workspace.CurrentCamera)
+    hookCameraScale(Workspace.CurrentCamera)
 end)
 
 --// TAB SYSTEM
 local Pages = {}
 local TabButtons = {}
-local CurrentActivePage = nil
 
 local function switchTab(tabName)
     for name, page in pairs(Pages) do
         page.Visible = (name == tabName)
-        if name == tabName then
-            CurrentActivePage = page
-        end
     end
 
     for name, data in pairs(TabButtons) do
@@ -1506,8 +1491,15 @@ local function CreateTab(text, icon)
         SortOrder = Enum.SortOrder.LayoutOrder
     }, Page)
 
+    new("UIPadding", {
+        PaddingTop = UDim.new(0, 4),
+        PaddingBottom = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 2),
+        PaddingRight = UDim.new(0, 6)
+    }, Page)
+
     PageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 20)
+        Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 24)
     end)
 
     Pages[text] = Page
@@ -1528,16 +1520,17 @@ new("Frame", {
     BorderSizePixel = 0
 }, Sidebar)
 
+--// HOVER
 local function AddHover(btn, baseColor, hoverColor)
-    local bc = baseColor or Theme.Card
-    local hc = hoverColor or Theme.CardHover
+    baseColor = baseColor or Theme.Card
+    hoverColor = hoverColor or Theme.CardHover
 
     btn.MouseEnter:Connect(function()
-        tween(btn, 0.2, {BackgroundColor3 = hc})
+        tween(btn, 0.2, {BackgroundColor3 = hoverColor})
     end)
 
     btn.MouseLeave:Connect(function()
-        tween(btn, 0.2, {BackgroundColor3 = bc})
+        tween(btn, 0.2, {BackgroundColor3 = baseColor})
     end)
 end
 
@@ -1789,6 +1782,100 @@ local function CreateButton(parent, opts)
     return btn
 end
 
+local function CreateSlider(parent, text, min, max, default, callback, layoutOrder)
+    local Container = new("Frame", {
+        Size = UDim2.new(1, -10, 0, 54),
+        BackgroundColor3 = Theme.Card,
+        BorderSizePixel = 0,
+        LayoutOrder = layoutOrder or 0,
+        Name = text
+    }, parent)
+
+    corner(Container, 8)
+    addStroke(Container, Theme.Stroke, 1)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -70, 0, 18),
+        Position = UDim2.new(0, 12, 0, 7),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.Text,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left
+    }, Container)
+
+    local ValueLabel = new("TextLabel", {
+        Size = UDim2.new(0, 50, 0, 18),
+        Position = UDim2.new(1, -60, 0, 7),
+        BackgroundTransparency = 1,
+        Text = tostring(default),
+        TextColor3 = Theme.TextDark,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Right
+    }, Container)
+
+    local Slider = new("TextButton", {
+        Size = UDim2.new(1, -24, 0, 14),
+        Position = UDim2.new(0, 12, 0, 31),
+        BackgroundColor3 = Theme.Background,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false
+    }, Container)
+
+    corner(Slider, 7)
+
+    local Fill = new("Frame", {
+        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0
+    }, Slider)
+
+    corner(Fill, 7)
+
+    table.insert(AccentTracker.Static, Fill)
+
+    local dragging = false
+
+    local function setValueFromX(x)
+        local sliderPos = Slider.AbsolutePosition.X
+        local sliderSize = math.max(Slider.AbsoluteSize.X, 1)
+
+        local rel = math.clamp((x - sliderPos) / sliderSize, 0, 1)
+        local value = math.floor(min + ((max - min) * rel) + 0.5)
+
+        Fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+        ValueLabel.Text = tostring(value)
+
+        callback(value)
+    end
+
+    Slider.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            setValueFromX(input.Position.X)
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging then
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                setValueFromX(input.Position.X)
+            end
+        end
+    end)
+
+    return Container
+end
+
 local function CreatePopupMenu(title, width, height)
     local menu = new("Frame", {
         Size = UDim2.new(0, width, 0, height),
@@ -1804,8 +1891,8 @@ local function CreatePopupMenu(title, width, height)
     addStroke(menu, Theme.Stroke, 1.5)
 
     local header = new("Frame", {
-        Size = UDim2.new(1, -10, 0, 28),
-        Position = UDim2.new(0, 5, 0, 2),
+        Size = UDim2.new(1, -8, 0, 28),
+        Position = UDim2.new(0, 4, 0, 2),
         BackgroundTransparency = 1,
         Active = true,
         ZIndex = 21
@@ -1842,7 +1929,7 @@ local function CreatePopupMenu(title, width, height)
         menu.Visible = false
     end)
 
-    MakeDraggable(header)
+    MakeDraggable(menu, {header})
 
     local content = new("Frame", {
         Size = UDim2.new(1, -16, 1, -38),
@@ -1867,8 +1954,8 @@ local CombatPage = CreateTab("Combat", "⚔️")
 local ServerPage = CreateTab("Server", "📡")
 local SettingsPage = CreateTab("Settings", "⚙️")
 
-local BypassMenu, BypassContent = CreatePopupMenu("BYPASS", 220, 210)
-local PetFilterMenu, PetFilterContent = CreatePopupMenu("PET FILTERS", 250, 180)
+local BypassMenu, BypassContent = CreatePopupMenu("BYPASS", 235, 225)
+local PetFilterMenu, PetFilterContent = CreatePopupMenu("PET FILTERS", 250, 185)
 
 --// MAIN PAGE
 CreateToggle(MainPage, {
@@ -1880,10 +1967,16 @@ CreateToggle(MainPage, {
     end
 })
 
+CreateSlider(MainPage, "Auto Run Speed", 16, 120, autoRunSpeed, function(value)
+    autoRunSpeed = value
+    Config.autoRunSpeed = value
+    SaveConfig()
+end, 2)
+
 CreateToggle(MainPage, {
     title = "Player ESP",
     cfgKey = "espEnabled",
-    layoutOrder = 2,
+    layoutOrder = 3,
     defaultKeybind = "T",
     callback = function(v)
         updateESP()
@@ -1894,7 +1987,7 @@ CreateToggle(MainPage, {
 CreateToggle(MainPage, {
     title = "Pets ESP",
     cfgKey = "petsEspEnabled",
-    layoutOrder = 3,
+    layoutOrder = 4,
     defaultKeybind = "Y",
     callback = function(v)
         if v then
@@ -1917,12 +2010,12 @@ CreateToggle(MainPage, {
 CreateToggle(MainPage, {
     title = "Anti Fall",
     cfgKey = "antiFallEnabled",
-    layoutOrder = 4,
+    layoutOrder = 5,
     callback = function(v)
         if v then
-            createAntiFall()
+            CreateAntiFall()
         else
-            removeAntiFall()
+            RemoveAntiFall()
         end
 
         notify("Anti Fall", v and "Enabled" or "Disabled", "info")
@@ -1932,7 +2025,7 @@ CreateToggle(MainPage, {
 CreateToggle(MainPage, {
     title = "Anti AFK",
     cfgKey = "antiAfkEnabled",
-    layoutOrder = 5,
+    layoutOrder = 6,
     callback = function(v)
         if v then
             startAntiAfk()
@@ -1946,7 +2039,7 @@ CreateToggle(MainPage, {
 
 CreateButton(MainPage, {
     title = "Pet Filter",
-    layoutOrder = 6,
+    layoutOrder = 7,
     callback = function()
         PetFilterMenu.Visible = not PetFilterMenu.Visible
     end
@@ -1955,7 +2048,7 @@ CreateButton(MainPage, {
 CreateButton(MainPage, {
     title = "Bypass Menu",
     cfgKey = "bypassMenu",
-    layoutOrder = 7,
+    layoutOrder = 8,
     defaultKeybind = "B",
     callback = function()
         BypassMenu.Visible = not BypassMenu.Visible
@@ -2026,7 +2119,7 @@ CreateButton(BypassContent, {
     end
 })
 
---// PET FILTER MENU CONTENT
+--// PET FILTER CONTENT
 local function CreateFilterRow(parent, labelText, placeholder, defaultText, layoutOrder)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 26),
@@ -2185,6 +2278,7 @@ CreateButton(ServerPage, {
         end
 
         notify("Server Hop", "Saved & Copied!", "success")
+
         StatusLabel.Text = "Saved Jobs: " .. #SavedJobs
         UpdateServerList()
     end
@@ -2461,7 +2555,7 @@ end
 new("TextLabel", {
     Size = UDim2.new(1, -10, 0, 40),
     BackgroundTransparency = 1,
-    Text = "Click on a key (e.g. T, Y, G) next to a function to rebind it.\nPress ESC to cancel.",
+    Text = "Click on a key next to a function to rebind it.\nPress ESC to cancel.",
     TextColor3 = Theme.TextDark,
     TextSize = 10,
     Font = Enum.Font.Gotham,
@@ -2472,7 +2566,7 @@ new("TextLabel", {
 
 --// RIGHT CTRL TOGGLE
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+    if gameProcessed or isListeningKeybind then return end
 
     if input.KeyCode == Enum.KeyCode.RightControl then
         uiVisible = not uiVisible
@@ -2498,7 +2592,7 @@ if State.autoLockEnabled then
 end
 
 if State.antiFallEnabled then
-    createAntiFall()
+    CreateAntiFall()
 end
 
 --// START UI
